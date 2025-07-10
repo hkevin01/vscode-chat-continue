@@ -187,39 +187,85 @@ class WindowDetector:
                 
                 for window in all_windows:
                     try:
+                        # Skip if window is None or invalid
+                        if not window or not hasattr(window, 'get_geometry'):
+                            continue
+                            
                         # Get window properties
-                        title = self.ewmh.getWmName(window) or ""
+                        title_raw = self.ewmh.getWmName(window)
+                        if title_raw:
+                            # Handle both bytes and string returns
+                            if isinstance(title_raw, bytes):
+                                title = title_raw.decode(
+                                    'utf-8', errors='ignore')
+                            else:
+                                title = str(title_raw)
+                        else:
+                            title = ""
+                        
                         window_pid = self.ewmh.getWmPid(window)
                         
                         # Check if this is a VS Code window
-                        if window_pid in vscode_pids and self._is_vscode_window(title):
-                            # Get window geometry
-                            geometry = window.get_geometry()
+                        if (window_pid in vscode_pids and
+                                self._is_vscode_window(title)):
+                            try:
+                                geometry = window.get_geometry()
+                                # Get the root window for absolute coordinates
+                                root = self.display.screen().root
+                                abs_x, abs_y = geometry.x, geometry.y
+                                
+                                # Try to get absolute coordinates by translating
+                                try:
+                                    translated = window.translate_coords(
+                                        root, 0, 0)
+                                    abs_x, abs_y = translated.x, translated.y
+                                except Exception:
+                                    # Fallback to geometry coordinates
+                                    pass
+                                    
+                            except Exception as geom_error:
+                                self.logger.debug(
+                                    f"Could not get geometry for "
+                                    f"window {window}: {geom_error}")
+                                continue
                             
                             # Check if window is focused
                             active_window = self.ewmh.getActiveWindow()
                             is_focused = active_window == window
                             
-                            vscode_window = VSCodeWindow(
-                                window_id=window.id,
-                                title=title,
-                                pid=window_pid,
-                                x=geometry.x,
-                                y=geometry.y,
-                                width=geometry.width,
-                                height=geometry.height,
-                                is_focused=is_focused
-                            )
-                            
-                            windows.append(vscode_window)
+                            # Create VSCodeWindow object
+                            try:
+                                vscode_window = VSCodeWindow(
+                                    window_id=getattr(window, 'id', 0),
+                                    title=title,
+                                    pid=window_pid,
+                                    x=abs_x,
+                                    y=abs_y,
+                                    width=geometry.width,
+                                    height=geometry.height,
+                                    is_focused=is_focused
+                                )
+                                
+                                windows.append(vscode_window)
+                                self.logger.debug(
+                                    f"Found VS Code window: "
+                                    f"{title[:30]}... at "
+                                    f"({geometry.x},{geometry.y})")
+                            except Exception as create_error:
+                                self.logger.debug(
+                                    f"Could not create window object "
+                                    f"for {title}: {create_error}")
+                                continue
                             
                     except Exception as e:
-                        self.logger.debug(f"Error processing window {window}: {e}")
+                        self.logger.debug(
+                            f"Error processing window {window}: {e}")
                         continue
                         
             except TimeoutError:
                 signal.alarm(0)  # Cancel timeout
-                self.logger.warning("X11 operation timed out, skipping window detection")
+                self.logger.warning(
+                    "X11 operation timed out, skipping window detection")
                 return []
                 
         except Exception as e:
@@ -231,7 +277,8 @@ class WindowDetector:
     def _get_windows_windows(self) -> List[VSCodeWindow]:
         """Get VS Code windows on Windows."""
         if not HAS_WIN32:
-            self.logger.warning("win32gui not available, cannot detect windows")
+            self.logger.warning(
+                "win32gui not available, cannot detect windows")
             return []
         
         windows = []
@@ -294,18 +341,21 @@ class WindowDetector:
             workspace = NSWorkspace.sharedWorkspace()
             running_apps = workspace.runningApplications()
             
-            vscode_apps = [app for app in running_apps 
-                          if any(name in (app.bundleIdentifier() or '').lower() 
-                                for name in ['code', 'vscode', 'cursor'])]
+            vscode_apps = [
+                app for app in running_apps
+                if any(name in (app.bundleIdentifier() or '').lower()
+                       for name in ['code', 'vscode', 'cursor'])
+            ]
             
             for app in vscode_apps:
-                # Note: Getting detailed window info on macOS requires additional permissions
+                # Note: Getting detailed window info on macOS requires
+                # additional permissions
                 # This is a simplified implementation
                 vscode_window = VSCodeWindow(
                     window_id=app.processIdentifier(),
                     title=app.localizedName(),
                     pid=app.processIdentifier(),
-                    x=0,  # Would need accessibility permissions to get actual coordinates
+                    x=0,  # Would need accessibility permissions
                     y=0,
                     width=800,  # Default values
                     height=600,
@@ -351,10 +401,12 @@ class WindowDetector:
         ]
         
         # Check if title contains VS Code indicators
-        has_vscode_indicator = any(indicator in title_lower for indicator in vscode_indicators)
+        has_vscode_indicator = any(
+            indicator in title_lower for indicator in vscode_indicators)
         
         # Check if title should be excluded
-        should_exclude = any(pattern in title_lower for pattern in exclude_patterns)
+        should_exclude = any(
+            pattern in title_lower for pattern in exclude_patterns)
         
         return has_vscode_indicator and not should_exclude
     

@@ -66,13 +66,71 @@ class AutomationWorker(QThread):
             # Initialize automation engine
             self.automation_engine = AutomationEngine(self.config_manager)
             
-            # Start automation (this would be async in real implementation)
-            # For demo purposes, we'll simulate the automation process
-            self._simulate_automation()
+            # Check if demo mode or real automation
+            demo_mode = self.config_manager.get('demo_mode', False)
+            if demo_mode:
+                self.log_message.emit("INFO", "Running in demo mode")
+                self._simulate_automation()
+            else:
+                self.log_message.emit("INFO", "Running real automation")
+                self._run_real_automation()
             
         except Exception as e:
             self.log_message.emit("ERROR", f"Automation error: {e}")
             self.status_update.emit("Error occurred")
+            
+    def _run_real_automation(self):
+        """Run real automation with actual button detection and clicking."""
+        cycle_count = 0
+        self._last_click_count = 0
+        
+        while self.running:
+            try:
+                cycle_count += 1
+                self.status_update.emit(f"Running cycle {cycle_count}...")
+                
+                # Get real stats from automation engine
+                if self.automation_engine:
+                    report = self.automation_engine.get_performance_report()
+                    engine_stats = report['statistics']
+                    
+                    # Enhanced stats for GUI display
+                    gui_stats = {
+                        'cycles': cycle_count,
+                        'windows_found': engine_stats.get('windows_processed', 0),
+                        'buttons_clicked': engine_stats.get('clicks_successful', 0),
+                        'buttons_attempted': engine_stats.get('clicks_attempted', 0),
+                        'success_rate': report.get('success_rate', 0) * 100,
+                        'errors': engine_stats.get('errors', 0),
+                        'runtime': report.get('runtime_seconds', 0)
+                    }
+                    
+                    self.stats_update.emit(gui_stats)
+                    
+                    # Log new button clicks
+                    clicks = engine_stats.get('clicks_successful', 0)
+                    if clicks > self._last_click_count:
+                        new_clicks = clicks - self._last_click_count
+                        self.log_message.emit("SUCCESS", 
+                            f"Clicked {new_clicks} Continue button(s)! "
+                            f"Total: {clicks}")
+                        self._last_click_count = clicks
+                
+                # Sleep between cycles
+                interval = self.config_manager.get('automation.interval_seconds', 2.0)
+                time.sleep(interval)
+                
+            except Exception as e:
+                self.log_message.emit("ERROR", f"Cycle error: {e}")
+                time.sleep(5)  # Wait before retrying
+    
+    def _calculate_success_rate(self, stats: Dict) -> float:
+        """Calculate success rate from engine stats."""
+        attempted = stats.get('clicks_attempted', 0)
+        successful = stats.get('clicks_successful', 0)
+        if attempted > 0:
+            return (successful / attempted) * 100
+        return 0.0
             
     def _simulate_automation(self):
         """Simulate automation for demo purposes."""
@@ -133,12 +191,16 @@ class StatisticsWidget(QWidget):
         self.cycles_label = QLabel("Detection Cycles: 0")
         self.windows_label = QLabel("Windows Found: 0")
         self.buttons_label = QLabel("Buttons Clicked: 0")
+        self.attempts_label = QLabel("Click Attempts: 0")
         self.success_label = QLabel("Success Rate: 0%")
+        self.errors_label = QLabel("Errors: 0")
         
         stats_layout.addWidget(self.cycles_label, 0, 0)
         stats_layout.addWidget(self.windows_label, 0, 1)
         stats_layout.addWidget(self.buttons_label, 1, 0)
-        stats_layout.addWidget(self.success_label, 1, 1)
+        stats_layout.addWidget(self.attempts_label, 1, 1)
+        stats_layout.addWidget(self.success_label, 2, 0)
+        stats_layout.addWidget(self.errors_label, 2, 1)
         
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group)
@@ -167,10 +229,19 @@ class StatisticsWidget(QWidget):
     
     def update_stats(self, stats: Dict):
         """Update statistics display."""
-        self.cycles_label.setText(f"Detection Cycles: {stats.get('cycles', 0)}")
-        self.windows_label.setText(f"Windows Found: {stats.get('windows_found', 0)}")
-        self.buttons_label.setText(f"Buttons Clicked: {stats.get('buttons_clicked', 0)}")
-        self.success_label.setText(f"Success Rate: {stats.get('success_rate', 0):.1f}%")
+        cycles = stats.get('cycles', 0)
+        windows = stats.get('windows_found', 0)
+        clicks = stats.get('buttons_clicked', 0)
+        attempts = stats.get('buttons_attempted', 0)
+        success_rate = stats.get('success_rate', 0)
+        errors = stats.get('errors', 0)
+        
+        self.cycles_label.setText(f"Detection Cycles: {cycles}")
+        self.windows_label.setText(f"Windows Found: {windows}")
+        self.buttons_label.setText(f"Buttons Clicked: {clicks}")
+        self.attempts_label.setText(f"Click Attempts: {attempts}")
+        self.success_label.setText(f"Success Rate: {success_rate:.1f}%")
+        self.errors_label.setText(f"Errors: {errors}")
 
 
 class ConfigurationWidget(QWidget):
@@ -569,6 +640,9 @@ class MainWindow(QMainWindow):
         self.quick_dry_run = QCheckBox("Dry Run Mode (Preview Only)")
         quick_layout.addWidget(self.quick_dry_run, 1, 0, 1, 2)
         
+        self.quick_demo_mode = QCheckBox("Demo Mode (Simulated Stats)")
+        quick_layout.addWidget(self.quick_demo_mode, 2, 0, 1, 2)
+        
         quick_group.setLayout(quick_layout)
         layout.addWidget(quick_group)
         
@@ -668,6 +742,9 @@ class MainWindow(QMainWindow):
         )
         self.config_manager.set(
             'automation.dry_run', self.quick_dry_run.isChecked()
+        )
+        self.config_manager.set(
+            'demo_mode', self.quick_demo_mode.isChecked()
         )
         
         # Start worker thread

@@ -37,16 +37,18 @@ USAGE:
     ./scripts/run.sh [OPTIONS]
 
 OPTIONS:
-    --gui           Launch GUI interface instead of command line
+    --cli           Use command-line interface instead of GUI (default: GUI)
+    --gui           Launch GUI interface (default behavior)
     --dry-run       Run in dry-run mode (no actual clicking)
     --config FILE   Use custom configuration file
     --validate      Validate installation and dependencies
     --help, -h      Show this help message
 
 EXAMPLES:
-    ./scripts/run.sh                    # Run with default settings (auto-installs if needed)
-    ./scripts/run.sh --gui              # Launch GUI interface
-    ./scripts/run.sh --dry-run          # Test mode without clicking
+    ./scripts/run.sh                    # Launch GUI interface (default)
+    ./scripts/run.sh --cli              # Use command-line interface
+    ./scripts/run.sh --dry-run          # Test mode without clicking (GUI)
+    ./scripts/run.sh --cli --dry-run    # Test mode with command-line interface
     ./scripts/run.sh --validate         # Check if everything is working
 
 SETUP:
@@ -57,12 +59,16 @@ CONFIGURATION:
     Default config: ~/.config/vscode-chat-continue/config.json
     Custom config:  ./scripts/run.sh --config /path/to/config.json
 
+DEFAULT BEHAVIOR:
+    By default, the script launches the modern PyQt6 GUI interface for the 
+    best user experience. Use --cli to force command-line mode if needed.
+
 For more information, see docs/USAGE.md
 EOF
 }
 
 # Parse command line arguments
-GUI_MODE=false
+GUI_MODE=true  # Default to GUI mode for better user experience
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
@@ -71,6 +77,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --gui)
             GUI_MODE=true
+            shift
+            ;;
+        --cli)
+            GUI_MODE=false
             shift
             ;;
         --dry-run)

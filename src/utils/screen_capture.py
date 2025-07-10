@@ -3,6 +3,8 @@
 import io
 import logging
 import platform
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -69,13 +71,36 @@ class ScreenCapture:
             PIL Image object or None if capture failed
         """
         try:
+            # For Linux, prefer scrot due to snap conflicts  
+            if self.platform == "Linux":
+                try:
+                    result = subprocess.run(['scrot', '/tmp/fullscreen.png'], 
+                                          capture_output=True, timeout=10)
+                    if result.returncode == 0:
+                        image = Image.open('/tmp/fullscreen.png')
+                        Path('/tmp/fullscreen.png').unlink(missing_ok=True)
+                        return image
+                except Exception as e:
+                    self.logger.debug(f"scrot fullscreen failed: {e}")
+            
             if HAS_PIL:
-                return ImageGrab.grab()
+                try:
+                    return ImageGrab.grab()
+                except Exception as e:
+                    self.logger.debug(f"PIL fullscreen failed: {e}")
+                    
             elif HAS_PYAUTOGUI:
-                screenshot = pyautogui.screenshot()
-                return screenshot
+                try:
+                    screenshot = pyautogui.screenshot()
+                    return screenshot
+                except Exception as e:
+                    self.logger.debug(f"pyautogui fullscreen failed: {e}")
+                    
             elif HAS_PYSCREENSHOT and self.platform == "Linux":
-                return ImageGrab_alt.grab()
+                try:
+                    return ImageGrab_alt.grab()
+                except Exception as e:
+                    self.logger.debug(f"pyscreenshot fullscreen failed: {e}")
             else:
                 self.logger.error("No screen capture method available")
                 return None
@@ -83,13 +108,14 @@ class ScreenCapture:
         except Exception as e:
             self.logger.error(f"Error capturing screen: {e}")
             return None
-    
-    def capture_region(self, x: int, y: int, width: int, height: int) -> Optional[Image.Image]:
+
+    def capture_region(self, x: int, y: int, width: int,
+                       height: int) -> Optional[Image.Image]:
         """Capture a specific region of the screen.
         
         Args:
             x: Left coordinate
-            y: Top coordinate  
+            y: Top coordinate
             width: Width of region
             height: Height of region
             
@@ -99,24 +125,71 @@ class ScreenCapture:
         try:
             bbox = (x, y, x + width, y + height)
             
+            # For Linux, prefer scrot due to snap conflicts with gnome-screenshot
+            if self.platform == "Linux":
+                scrot_result = self._capture_with_scrot(x, y, width, height)
+                if scrot_result:
+                    return scrot_result
+            
+            # Try other capture methods as backup
             if HAS_PIL:
-                return ImageGrab.grab(bbox=bbox)
-            elif HAS_PYAUTOGUI:
-                return pyautogui.screenshot(region=(x, y, width, height))
-            elif HAS_PYSCREENSHOT and self.platform == "Linux":
-                return ImageGrab_alt.grab(bbox=bbox)
-            else:
-                # Fallback: capture full screen and crop
-                full_screen = self.capture_screen()
-                if full_screen:
-                    return full_screen.crop(bbox)
-                return None
+                try:
+                    return ImageGrab.grab(bbox=bbox)
+                except Exception as e:
+                    self.logger.debug(f"PIL capture failed: {e}")
+            
+            if HAS_PYAUTOGUI:
+                try:
+                    return pyautogui.screenshot(region=(x, y, width, height))
+                except Exception as e:
+                    self.logger.debug(
+                        f"pyautogui capture failed: {e}")
+            
+            if HAS_PYSCREENSHOT and self.platform == "Linux":
+                try:
+                    return ImageGrab_alt.grab(bbox=bbox)
+                except Exception as e:
+                    self.logger.debug(f"pyscreenshot failed: {e}")
+            
+            # Last resort: capture full screen and crop
+            full_screen = self.capture_screen()
+            if full_screen:
+                return full_screen.crop(bbox)
+            return None
                 
         except Exception as e:
             self.logger.error(f"Error capturing region {bbox}: {e}")
             return None
     
-    def capture_window(self, window_id: int, x: int, y: int, width: int, height: int) -> Optional[Image.Image]:
+    def _capture_with_scrot(self, x: int, y: int, width: int,
+                            height: int) -> Optional[Image.Image]:
+        """Use scrot to capture a region (Linux fallback)."""
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.png',
+                                             delete=False) as tmp:
+                cmd = [
+                    'scrot',
+                    '-a', f'{x},{y},{width},{height}',
+                    tmp.name
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=10)
+                
+                if result.returncode == 0:
+                    image = Image.open(tmp.name)
+                    # Clean up temp file
+                    Path(tmp.name).unlink(missing_ok=True)
+                    return image
+                else:
+                    self.logger.debug(f"scrot failed: {result.stderr}")
+                    Path(tmp.name).unlink(missing_ok=True)
+                    return None
+                    
+        except Exception as e:
+            self.logger.debug(f"scrot capture error: {e}")
+            return None
+
+    def capture_window(self, window_id: int, x: int, y: int, width: int,
+                       height: int) -> Optional[Image.Image]:
         """Capture a specific window.
         
         Args:
@@ -129,7 +202,7 @@ class ScreenCapture:
         Returns:
             PIL Image object or None if capture failed
         """
-        # For most cases, we'll use region capture since window-specific 
+        # For most cases, we'll use region capture since window-specific
         # capture requires platform-specific implementations
         return self.capture_region(x, y, width, height)
     
