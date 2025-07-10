@@ -20,6 +20,9 @@ psutil>=5.9.0
 pynput>=1.7.6
 numpy>=1.24.0
 
+# GUI framework
+PyQt6>=6.5.0
+
 # Linux-specific dependencies (install only on Linux)
 python-xlib>=0.33; sys_platform == "linux"
 ewmh>=0.1.6; sys_platform == "linux"

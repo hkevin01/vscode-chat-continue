@@ -9,6 +9,8 @@ Automatically click the "Continue" button in VS Code Copilot Chat across all ope
 - **Multi-window Support**: Handles multiple VS Code instances simultaneously
 - **Safety Controls**: Emergency stop and user activity detection
 - **Configurable**: Customizable intervals and filtering options
+- **Modern GUI**: PyQt6-based interface with dark theme and real-time monitoring
+- **Fallback Strategy**: Text input automation when buttons aren't found
 
 ## 📋 Requirements
 
