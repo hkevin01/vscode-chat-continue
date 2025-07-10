@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .config_manager import ConfigManager
+
 try:
     import cv2
     import numpy as np
@@ -56,26 +58,35 @@ class ButtonLocation:
 class ButtonFinder:
     """Finds Continue buttons in VS Code screenshots using multiple methods."""
     
-    def __init__(self, template_dir: Optional[Path] = None):
+    def __init__(self, config_manager: ConfigManager):
         """Initialize the button finder.
         
         Args:
-            template_dir: Directory containing button template images
+            config_manager: Configuration manager instance
         """
+        self.config_manager = config_manager
         self.logger = logging.getLogger(__name__)
-        self.template_dir = template_dir or Path(__file__).parent.parent / "templates"
+        
+        detection_config = self.config_manager.get('detection', {})
+        
+        # Set template directory
+        template_dir_str = detection_config.get('template_dir', 'templates')
+        self.template_dir = Path(__file__).parent.parent / template_dir_str
         
         # Button detection configuration
+        button_texts = detection_config.get('button_text', ['Continue'])
         self.continue_patterns = [
-            r'\bcontinue\b',
+            r'\b' + re.escape(text) + r'\b' for text in button_texts
+        ]
+        self.continue_patterns.extend([
             r'\bcontinue\s*\.\.\.',
             r'\bcontinue\s*response\b',
-            r'\bkeep\s*going\b',
-            r'\bmore\b',
-        ]
+        ])
         
         # OCR configuration with more permissive settings
-        self.tesseract_config = r'--oem 3 --psm 6'
+        self.tesseract_config = detection_config.get(
+            'tesseract_config', r'--oem 3 --psm 6'
+        )
         
         self._check_dependencies()
     
@@ -93,10 +104,13 @@ class ButtonFinder:
         if not methods:
             self.logger.warning("No button detection methods available!")
         else:
-            self.logger.debug(f"Available detection methods: {', '.join(methods)}")
+            self.logger.debug(
+                f"Available detection methods: {', '.join(methods)}"
+            )
     
-    def find_continue_buttons(self, image: Image.Image, 
-                            window_x: int = 0, window_y: int = 0) -> List[ButtonLocation]:
+    def find_continue_buttons(
+        self, image: Image.Image, window_x: int = 0, window_y: int = 0
+    ) -> List[ButtonLocation]:
         """Find all Continue buttons in an image.
         
         Args:
@@ -145,8 +159,9 @@ class ButtonFinder:
         
         return buttons
     
-    def _find_buttons_ocr(self, image: Image.Image, 
-                         window_x: int, window_y: int) -> List[ButtonLocation]:
+    def _find_buttons_ocr(
+        self, image: Image.Image, window_x: int, window_y: int
+    ) -> List[ButtonLocation]:
         """Find buttons using OCR text detection.
         
         Args:
@@ -161,8 +176,11 @@ class ButtonFinder:
         
         try:
             # Get detailed OCR data
-            ocr_data = pytesseract.image_to_data(image, config=self.tesseract_config, 
-                                               output_type=pytesseract.Output.DICT)
+            ocr_data = pytesseract.image_to_data(
+                image,
+                config=self.tesseract_config,
+                output_type=pytesseract.Output.DICT
+            )
             
             # Process each detected text element
             for i in range(len(ocr_data['text'])):
@@ -171,15 +189,20 @@ class ButtonFinder:
                 
                 # Debug: log all detected text
                 if text and confidence > 10:
-                    self.logger.debug(f"OCR detected: '{text}' (confidence: {confidence})")
+                    self.logger.debug(
+                        f"OCR detected: '{text}' (confidence: {confidence})"
+                    )
                 
-                # Skip low confidence or empty text (lowered threshold for debugging)
+                # Skip low confidence or empty text
                 if confidence < 20 or not text:
                     continue
                 
                 # Check if text matches continue patterns
                 if self._matches_continue_pattern(text):
-                    self.logger.info(f"Found Continue button: '{text}' (confidence: {confidence})")
+                    self.logger.info(
+                        f"Found Continue button: '{text}' "
+                        f"(confidence: {confidence})"
+                    )
                     x = ocr_data['left'][i] + window_x
                     y = ocr_data['top'][i] + window_y
                     width = ocr_data['width'][i]
@@ -204,8 +227,9 @@ class ButtonFinder:
         
         return buttons
     
-    def _find_buttons_template(self, image: Image.Image, 
-                             window_x: int, window_y: int) -> List[ButtonLocation]:
+    def _find_buttons_template(
+        self, image: Image.Image, window_x: int, window_y: int
+    ) -> List[ButtonLocation]:
         """Find buttons using template matching.
         
         Args:
@@ -253,8 +277,9 @@ class ButtonFinder:
         
         return buttons
     
-    def _find_buttons_color(self, image: Image.Image, 
-                          window_x: int, window_y: int) -> List[ButtonLocation]:
+    def _find_buttons_color(
+        self, image: Image.Image, window_x: int, window_y: int
+    ) -> List[ButtonLocation]:
         """Find buttons using color-based detection.
         
         Args:
@@ -287,11 +312,14 @@ class ButtonFinder:
                     ]
                     
                     for i, (lower, upper) in enumerate(button_ranges):
-                        mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+                        mask = cv2.inRange(
+                            hsv, np.array(lower), np.array(upper)
+                        )
                         
                         # Find contours
-                        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, 
-                                                     cv2.CHAIN_APPROX_SIMPLE)
+                        contours, _ = cv2.findContours(
+                            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+                        )
                         
                         for contour in contours:
                             area = cv2.contourArea(contour)
@@ -300,14 +328,14 @@ class ButtonFinder:
                             if 500 < area < 10000:
                                 x, y, w, h = cv2.boundingRect(contour)
                                 
-                                # Check aspect ratio (buttons are usually wider than tall)
+                                # Check aspect ratio
                                 if 0.3 < h / w < 3.0:
                                     button = ButtonLocation(
                                         x=x + window_x,
                                         y=y + window_y,
                                         width=w,
                                         height=h,
-                                        confidence=0.3,  # Lower confidence for color detection
+                                        confidence=0.3,
                                         method=f"color_{i}",
                                         text=None
                                     )
@@ -364,7 +392,9 @@ class ButtonFinder:
         
         try:
             if not self.template_dir.exists():
-                self.logger.debug(f"Template directory {self.template_dir} does not exist")
+                self.logger.debug(
+                    f"Template directory {self.template_dir} does not exist"
+                )
                 return templates
             
             for template_file in self.template_dir.glob("*.png"):
@@ -373,16 +403,18 @@ class ButtonFinder:
                     if template is not None:
                         templates[template_file.stem] = template
                 except Exception as e:
-                    self.logger.debug(f"Error loading template {template_file}: {e}")
+                    self.logger.debug(
+                        f"Error loading template {template_file}: {e}"
+                    )
                     
         except Exception as e:
             self.logger.debug(f"Error loading templates: {e}")
         
         return templates
     
-    def _match_template(self, image: np.ndarray, 
-                       template: np.ndarray, 
-                       threshold: float = 0.7) -> List[Tuple[int, int, int, int, float]]:
+    def _match_template(
+        self, image: np.ndarray, template: np.ndarray, threshold: float = 0.7
+    ) -> List[Tuple[int, int, int, int, float]]:
         """Match a template in an image.
         
         Args:
@@ -403,15 +435,18 @@ class ButtonFinder:
             
             for pt in zip(*locations[::-1]):
                 confidence = result[pt[1], pt[0]]
-                matches.append((pt[0], pt[1], template_w, template_h, confidence))
+                matches.append(
+                    (pt[0], pt[1], template_w, template_h, confidence)
+                )
                 
         except Exception as e:
             self.logger.debug(f"Template matching error: {e}")
         
         return matches
     
-    def _deduplicate_buttons(self, buttons: List[ButtonLocation], 
-                           overlap_threshold: float = 0.5) -> List[ButtonLocation]:
+    def _deduplicate_buttons(
+        self, buttons: List[ButtonLocation], overlap_threshold: float = 0.5
+    ) -> List[ButtonLocation]:
         """Remove duplicate/overlapping button detections.
         
         Args:
@@ -425,12 +460,14 @@ class ButtonFinder:
             return buttons
         
         # Sort by confidence (highest first)
-        sorted_buttons = sorted(buttons, key=lambda b: b.confidence, reverse=True)
+        sorted_buttons = sorted(
+            buttons, key=lambda b: b.confidence, reverse=True
+        )
         
         filtered_buttons = []
         
         for button in sorted_buttons:
-            # Check if this button overlaps significantly with any existing button
+            # Check for significant overlap with existing buttons
             is_duplicate = False
             
             for existing in filtered_buttons:
@@ -444,8 +481,9 @@ class ButtonFinder:
         
         return filtered_buttons
     
-    def _calculate_overlap(self, button1: ButtonLocation, 
-                          button2: ButtonLocation) -> float:
+    def _calculate_overlap(
+        self, button1: ButtonLocation, button2: ButtonLocation
+    ) -> float:
         """Calculate overlap ratio between two buttons.
         
         Args:
@@ -475,8 +513,9 @@ class ButtonFinder:
         
         return intersection / smaller_area if smaller_area > 0 else 0.0
     
-    def _find_blue_rectangles(self, image: Image.Image, 
-                            window_x: int, window_y: int) -> List[ButtonLocation]:
+    def _find_blue_rectangles(
+        self, image: Image.Image, window_x: int, window_y: int
+    ) -> List[ButtonLocation]:
         """Find blue rectangular areas that could be Continue buttons.
         
         This is a fallback method when OCR is not available.
@@ -503,45 +542,51 @@ class ButtonFinder:
             tolerance = 50
             
             # Scan image for blue rectangular regions
-            for y in range(0, height - 20, 10):  # Skip small increments
-                for x in range(0, width - 50, 10):  # Skip small increments
+            for y in range(0, height - 20, 10):
+                for x in range(0, width - 50, 10):
                     pixel = image.getpixel((x, y))
                     
                     # Check if pixel is close to VS Code blue
                     if (abs(pixel[0] - target_blue[0]) < tolerance and
-                        abs(pixel[1] - target_blue[1]) < tolerance and 
+                        abs(pixel[1] - target_blue[1]) < tolerance and
                         abs(pixel[2] - target_blue[2]) < tolerance):
                         
                         # Found blue pixel, try to find the button bounds
-                        button_bounds = self._trace_blue_rectangle(image, x, y, target_blue, tolerance)
+                        button_bounds = self._trace_blue_rectangle(
+                            image, x, y, target_blue, tolerance
+                        )
                         
                         if button_bounds:
                             bx, by, bw, bh = button_bounds
                             
                             # Check if it's button-sized
-                            if (40 <= bw <= 200 and 20 <= bh <= 60 and 
-                                1.5 <= bw/bh <= 6.0):  # Reasonable button proportions
+                            if (40 <= bw <= 200 and 20 <= bh <= 60 and
+                                1.5 <= bw/bh <= 6.0):
                                 
                                 button = ButtonLocation(
                                     x=bx + window_x,
                                     y=by + window_y,
                                     width=bw,
                                     height=bh,
-                                    confidence=0.4,  # Medium confidence for color match
+                                    confidence=0.4,
                                     method="blue_rectangle",
                                     text="potential_continue"
                                 )
                                 
                                 buttons.append(button)
-                                self.logger.debug(f"Found blue rectangle at ({bx}, {by}) size {bw}x{bh}")
+                                self.logger.debug(
+                                    f"Found blue rectangle at ({bx}, {by}) "
+                                    f"size {bw}x{bh}"
+                                )
         
         except Exception as e:
             self.logger.debug(f"Blue rectangle detection error: {e}")
         
         return buttons
     
-    def _trace_blue_rectangle(self, image: Image.Image, start_x: int, start_y: int,
-                            target_color: tuple, tolerance: int) -> Optional[tuple]:
+    def _trace_blue_rectangle(self, image: Image.Image, start_x: int,
+                            start_y: int, target_color: tuple,
+                            tolerance: int) -> Optional[tuple]:
         """Trace the bounds of a blue rectangular region.
         
         Args:
@@ -563,7 +608,7 @@ class ButtonFinder:
             
             # Expand right
             while (right < width - 1 and 
-                   self._color_matches(image.getpixel((right + 1, start_y)), 
+                   self._color_matches(image.getpixel((right + 1, start_y)),
                                      target_color, tolerance)):
                 right += 1
             

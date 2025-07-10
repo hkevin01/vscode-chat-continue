@@ -5,11 +5,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from core.button_finder import ButtonFinder, ButtonLocation
-from core.click_automator import ClickAutomator
-from core.config_manager import ConfigManager
-from core.window_detector import VSCodeWindow, WindowDetector
-from utils.screen_capture import ScreenCapture
+from .button_finder import ButtonFinder, ButtonLocation
+from .click_automator import ClickAutomator
+from .config_manager import ConfigManager
+from .window_detector import VSCodeWindow, WindowDetector
+from ..utils.screen_capture import ScreenCapture
 
 try:
     from pynput import keyboard, mouse
@@ -38,7 +38,7 @@ class AutomationEngine:
         
         # Initialize components
         self.window_detector = WindowDetector()
-        self.button_finder = ButtonFinder()
+        self.button_finder = ButtonFinder(self.config_manager)
         self.click_automator = ClickAutomator(
             click_delay=config_manager.get('automation.click_delay', 0.1),
             move_duration=config_manager.get('automation.move_duration', 0.2)

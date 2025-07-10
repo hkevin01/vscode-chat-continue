@@ -72,6 +72,7 @@ GUI_MODE=true  # Default to GUI mode for better user experience
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
+DEBUG_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -93,6 +94,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --validate)
             VALIDATE_ONLY=true
+            shift
+            ;;
+        --debug)
+            DEBUG_MODE=true
             shift
             ;;
         --help|-h)
@@ -272,19 +277,24 @@ else
     print_success "Found $vscode_count VS Code process(es)"
 fi
 
-# Prepare command line arguments
-PYTHON_ARGS=()
+# Build arguments for the main script
+ARGS=()
+if [ "$GUI_MODE" = true ]; then
+    ARGS+=("--gui")
+else
+    ARGS+=("--cli")
+fi
 
-if $DRY_RUN; then
-    PYTHON_ARGS+=("--dry-run")
+if [ "$DRY_RUN" = true ]; then
+    ARGS+=("--dry-run")
 fi
 
 if [ -n "$CONFIG_FILE" ]; then
-    if [ ! -f "$CONFIG_FILE" ]; then
-        print_error "Configuration file not found: $CONFIG_FILE"
-        exit 1
-    fi
-    PYTHON_ARGS+=("--config" "$CONFIG_FILE")
+    ARGS+=("--config" "$CONFIG_FILE")
+fi
+
+if [ "$DEBUG_MODE" = true ]; then
+    ARGS+=("--debug")
 fi
 
 # Display startup information

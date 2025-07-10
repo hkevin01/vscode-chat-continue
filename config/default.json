@@ -48,28 +48,21 @@
   },
   "safety": {
     "user_activity_timeout": 5.0,
-    "pause_on_typing": true,
-    "pause_on_mouse_movement": false,
-    "dry_run_mode": false,
-    "emergency_stop_enabled": true
-  },
-  "debug": {
-    "skip_window_detection": false,
-    "verbose_logging": false,
-    "simulate_buttons": false
-  },
-  "hotkeys": {
-    "manual_trigger": "ctrl+alt+shift+c",
-    "toggle_pause": "ctrl+alt+shift+p", 
-    "emergency_stop": "ctrl+alt+shift+q"
+    "confirmation_required": false,
+    "disable_on_fullscreen": true
   },
   "logging": {
     "level": "INFO",
-    "file": "~/.local/share/vscode-continue/app.log",
-    "max_size": "10MB",
+    "console_output": true,
+    "file_path": "logs/automation.log",
+    "max_file_size_mb": 10,
     "backup_count": 5,
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    "console_output": true
+    "detailed_timing": false
+  },
+  "gui": {
+    "theme": "dark",
+    "language": "en",
+    "show_tips": true
   },
   "performance": {
     "max_screenshot_size": [1920, 1080],

@@ -6,12 +6,12 @@ import platform
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 try:
-    import cv2
-    import numpy as np
-    HAS_OPENCV = True
+    # import cv2
+    # import numpy as np
+    HAS_OPENCV = False  # No direct usage in this file
 except ImportError:
     HAS_OPENCV = False
 
@@ -30,6 +30,13 @@ except ImportError:
 if platform.system() == "Linux":
     try:
         import pyscreenshot as ImageGrab_alt
+
+        # Force pyscreenshot to avoid gnome-screenshot to prevent snap conflicts
+        import pyscreenshot.backends
+
+        # Remove gnome-screenshot from available backends if present
+        if hasattr(pyscreenshot.backends, 'gnome_screenshot'):
+            delattr(pyscreenshot.backends, 'gnome_screenshot')
         HAS_PYSCREENSHOT = True
     except ImportError:
         HAS_PYSCREENSHOT = False
@@ -42,6 +49,10 @@ class ScreenCapture:
         """Initialize the screen capture utility."""
         self.logger = logging.getLogger(__name__)
         self.platform = platform.system()
+        
+        # Disable gnome-screenshot to prevent snap conflicts
+        import os
+        os.environ['PYSCREENSHOT_BACKEND'] = 'pil'
         
         # Check available libraries
         self._check_dependencies()
@@ -237,90 +248,19 @@ class ScreenCapture:
             True if saved successfully, False otherwise
         """
         try:
+            # Ensure the directory exists
+            Path(filepath).parent.mkdir(parents=True, exist_ok=True)
             image.save(filepath)
-            self.logger.debug(f"Saved screenshot to {filepath}")
+            self.logger.debug(f"Image saved to {filepath}")
             return True
         except Exception as e:
             self.logger.error(f"Error saving image to {filepath}: {e}")
             return False
-    
-    def image_to_numpy(self, image: Image.Image) -> Optional[np.ndarray]:
-        """Convert PIL Image to numpy array for OpenCV processing.
-        
-        Args:
-            image: PIL Image object
-            
-        Returns:
-            Numpy array or None if conversion failed
-        """
-        if not HAS_OPENCV:
-            self.logger.warning("OpenCV not available for image conversion")
-            return None
-        
-        try:
-            # Convert PIL to RGB if needed
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Convert to numpy array and change from RGB to BGR for OpenCV
-            numpy_image = np.array(image)
-            opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
-            return opencv_image
-            
-        except Exception as e:
-            self.logger.error(f"Error converting image to numpy: {e}")
-            return None
-    
-    def numpy_to_image(self, numpy_array: np.ndarray) -> Optional[Image.Image]:
-        """Convert numpy array to PIL Image.
-        
-        Args:
-            numpy_array: OpenCV/numpy image array
-            
-        Returns:
-            PIL Image object or None if conversion failed
-        """
-        if not HAS_PIL:
-            self.logger.warning("PIL not available for image conversion")
-            return None
-        
-        try:
-            # Convert from BGR to RGB
-            if len(numpy_array.shape) == 3:
-                rgb_array = cv2.cvtColor(numpy_array, cv2.COLOR_BGR2RGB)
-            else:
-                rgb_array = numpy_array
-            
-            return Image.fromarray(rgb_array)
-            
-        except Exception as e:
-            self.logger.error(f"Error converting numpy to image: {e}")
-            return None
-    
-    def get_screen_size(self) -> Tuple[int, int]:
-        """Get the screen size.
-        
-        Returns:
-            Tuple of (width, height)
-        """
-        try:
-            if HAS_PYAUTOGUI:
-                return pyautogui.size()
-            elif HAS_PIL:
-                # Capture screen and get size
-                screen = self.capture_screen()
-                if screen:
-                    return screen.size
-            
-            # Fallback default
-            return (1920, 1080)
-            
-        except Exception as e:
-            self.logger.error(f"Error getting screen size: {e}")
-            return (1920, 1080)
-    
-    def image_to_bytes(self, image: Image.Image, format: str = 'PNG') -> Optional[bytes]:
-        """Convert PIL Image to bytes.
+
+    def image_to_bytes(
+        self, image: Image.Image, format: str = 'PNG'
+    ) -> Optional[bytes]:
+        """Convert a PIL Image to bytes.
         
         Args:
             image: PIL Image object
