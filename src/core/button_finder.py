@@ -114,21 +114,31 @@ class ButtonFinder:
             if HAS_TESSERACT:
                 ocr_buttons = self._find_buttons_ocr(image, window_x, window_y)
                 buttons.extend(ocr_buttons)
+                self.logger.debug(f"OCR found {len(ocr_buttons)} buttons")
             
             # Method 2: Template matching
             if HAS_OPENCV:
                 template_buttons = self._find_buttons_template(image, window_x, window_y)
                 buttons.extend(template_buttons)
+                self.logger.debug(f"Template matching found {len(template_buttons)} buttons")
             
             # Method 3: Color-based detection
             color_buttons = self._find_buttons_color(image, window_x, window_y)
             buttons.extend(color_buttons)
+            self.logger.debug(f"Color detection found {len(color_buttons)} buttons")
+            
+            # Method 4: Blue rectangle fallback (when OCR unavailable)
+            if not HAS_TESSERACT:
+                self.logger.info("OCR not available, using blue rectangle fallback")
+                blue_buttons = self._find_blue_rectangles(image, window_x, window_y)
+                buttons.extend(blue_buttons)
+                self.logger.debug(f"Blue rectangle detection found {len(blue_buttons)} buttons")
             
             # Remove duplicates and sort by confidence
             buttons = self._deduplicate_buttons(buttons)
             buttons.sort(key=lambda b: b.confidence, reverse=True)
             
-            self.logger.debug(f"Found {len(buttons)} continue buttons")
+            self.logger.debug(f"Total found {len(buttons)} continue buttons after deduplication")
             
         except Exception as e:
             self.logger.error(f"Error finding buttons: {e}")
@@ -159,12 +169,17 @@ class ButtonFinder:
                 text = ocr_data['text'][i].strip().lower()
                 confidence = float(ocr_data['conf'][i])
                 
-                # Skip low confidence or empty text
-                if confidence < 30 or not text:
+                # Debug: log all detected text
+                if text and confidence > 10:
+                    self.logger.debug(f"OCR detected: '{text}' (confidence: {confidence})")
+                
+                # Skip low confidence or empty text (lowered threshold for debugging)
+                if confidence < 20 or not text:
                     continue
                 
                 # Check if text matches continue patterns
                 if self._matches_continue_pattern(text):
+                    self.logger.info(f"Found Continue button: '{text}' (confidence: {confidence})")
                     x = ocr_data['left'][i] + window_x
                     y = ocr_data['top'][i] + window_y
                     width = ocr_data['width'][i]
@@ -263,8 +278,10 @@ class ButtonFinder:
                     
                     # Define color ranges for typical VS Code buttons
                     button_ranges = [
-                        # Blue buttons (primary action)
-                        ((100, 50, 50), (130, 255, 255)),
+                        # Blue buttons (primary action) - VS Code blue #007ACC
+                        ((100, 100, 100), (130, 255, 255)),
+                        # Darker blue buttons
+                        ((90, 80, 80), (140, 255, 200)),
                         # Gray buttons (secondary action)
                         ((0, 0, 100), (180, 30, 200)),
                     ]
@@ -457,3 +474,137 @@ class ButtonFinder:
         smaller_area = min(area1, area2)
         
         return intersection / smaller_area if smaller_area > 0 else 0.0
+    
+    def _find_blue_rectangles(self, image: Image.Image, 
+                            window_x: int, window_y: int) -> List[ButtonLocation]:
+        """Find blue rectangular areas that could be Continue buttons.
+        
+        This is a fallback method when OCR is not available.
+        
+        Args:
+            image: PIL Image to search in
+            window_x: X offset of the window
+            window_y: Y offset of the window
+            
+        Returns:
+            List of ButtonLocation objects
+        """
+        buttons = []
+        
+        try:
+            # Convert to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            width, height = image.size
+            
+            # Define VS Code blue color (#007ACC) with some tolerance
+            target_blue = (0, 122, 204)  # VS Code blue
+            tolerance = 50
+            
+            # Scan image for blue rectangular regions
+            for y in range(0, height - 20, 10):  # Skip small increments
+                for x in range(0, width - 50, 10):  # Skip small increments
+                    pixel = image.getpixel((x, y))
+                    
+                    # Check if pixel is close to VS Code blue
+                    if (abs(pixel[0] - target_blue[0]) < tolerance and
+                        abs(pixel[1] - target_blue[1]) < tolerance and 
+                        abs(pixel[2] - target_blue[2]) < tolerance):
+                        
+                        # Found blue pixel, try to find the button bounds
+                        button_bounds = self._trace_blue_rectangle(image, x, y, target_blue, tolerance)
+                        
+                        if button_bounds:
+                            bx, by, bw, bh = button_bounds
+                            
+                            # Check if it's button-sized
+                            if (40 <= bw <= 200 and 20 <= bh <= 60 and 
+                                1.5 <= bw/bh <= 6.0):  # Reasonable button proportions
+                                
+                                button = ButtonLocation(
+                                    x=bx + window_x,
+                                    y=by + window_y,
+                                    width=bw,
+                                    height=bh,
+                                    confidence=0.4,  # Medium confidence for color match
+                                    method="blue_rectangle",
+                                    text="potential_continue"
+                                )
+                                
+                                buttons.append(button)
+                                self.logger.debug(f"Found blue rectangle at ({bx}, {by}) size {bw}x{bh}")
+        
+        except Exception as e:
+            self.logger.debug(f"Blue rectangle detection error: {e}")
+        
+        return buttons
+    
+    def _trace_blue_rectangle(self, image: Image.Image, start_x: int, start_y: int,
+                            target_color: tuple, tolerance: int) -> Optional[tuple]:
+        """Trace the bounds of a blue rectangular region.
+        
+        Args:
+            image: PIL Image
+            start_x: Starting X coordinate
+            start_y: Starting Y coordinate  
+            target_color: Target RGB color
+            tolerance: Color tolerance
+            
+        Returns:
+            (x, y, width, height) or None
+        """
+        try:
+            width, height = image.size
+            
+            # Find left and right bounds
+            left = start_x
+            right = start_x
+            
+            # Expand right
+            while (right < width - 1 and 
+                   self._color_matches(image.getpixel((right + 1, start_y)), 
+                                     target_color, tolerance)):
+                right += 1
+            
+            # Expand left  
+            while (left > 0 and
+                   self._color_matches(image.getpixel((left - 1, start_y)),
+                                     target_color, tolerance)):
+                left -= 1
+            
+            # Find top and bottom bounds
+            top = start_y
+            bottom = start_y
+            
+            # Expand down
+            while (bottom < height - 1 and
+                   self._color_matches(image.getpixel((start_x, bottom + 1)),
+                                     target_color, tolerance)):
+                bottom += 1
+            
+            # Expand up
+            while (top > 0 and
+                   self._color_matches(image.getpixel((start_x, top - 1)),
+                                     target_color, tolerance)):
+                top -= 1
+            
+            return (left, top, right - left + 1, bottom - top + 1)
+            
+        except Exception:
+            return None
+    
+    def _color_matches(self, pixel: tuple, target: tuple, tolerance: int) -> bool:
+        """Check if a pixel color matches target within tolerance.
+        
+        Args:
+            pixel: RGB pixel tuple
+            target: Target RGB color tuple
+            tolerance: Color tolerance
+            
+        Returns:
+            True if colors match within tolerance
+        """
+        return (abs(pixel[0] - target[0]) < tolerance and
+                abs(pixel[1] - target[1]) < tolerance and
+                abs(pixel[2] - target[2]) < tolerance)
