@@ -2,14 +2,20 @@
 
 import asyncio
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..utils.screen_capture import ScreenCapture
-from .button_finder import ButtonFinder, ButtonLocation
-from .click_automator import ClickAutomator
-from .config_manager import ConfigManager
-from .window_detector import VSCodeWindow, WindowDetector
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.core.button_finder import ButtonFinder, ButtonLocation
+from src.core.click_automator import ClickAutomator
+from src.core.config_manager import ConfigManager
+from src.core.window_detector import VSCodeWindow, WindowDetector
+from src.utils.screen_capture import ScreenCapture
 
 try:
     from pynput import keyboard, mouse

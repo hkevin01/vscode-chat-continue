@@ -2,11 +2,16 @@
 
 import logging
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config_manager import ConfigManager
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.core.config_manager import ConfigManager
 
 try:
     import cv2

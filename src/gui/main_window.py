@@ -38,10 +38,11 @@ from PyQt6.QtWidgets import (
 )
 
 # Import core modules
-sys.path.append(str(Path(__file__).parent.parent))
-from core.automation_engine import AutomationEngine
-from core.config_manager import ConfigManager
-from utils.logger import setup_logging
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+from src.core.automation_engine import AutomationEngine
+from src.core.config_manager import ConfigManager
+from src.utils.logger import setup_logging
 
 
 class AutomationWorker(QThread):
