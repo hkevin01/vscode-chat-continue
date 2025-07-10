@@ -3,7 +3,8 @@
 import logging
 import platform
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 import psutil
 
 if platform.system() == "Linux":

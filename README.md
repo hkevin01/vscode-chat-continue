@@ -33,6 +33,22 @@ pip install -r requirements.txt
 python setup.py install
 ```
 
+## 🧪 Testing
+
+Before using the automation tool, run the test script to verify all components are working:
+
+```bash
+# Test Phase 1 & 2 functionality
+python test_phases.py
+```
+
+This will test:
+- ✅ Window detection and VS Code process identification
+- ✅ Screen capture functionality  
+- ✅ Button detection algorithms
+- ✅ Click automation (dry run mode)
+- ✅ Component integration
+
 ## 🎯 Usage
 
 ### Basic Usage

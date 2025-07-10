@@ -18,6 +18,28 @@ opencv-python>=4.8.0
 Pillow>=10.0.0
 psutil>=5.9.0
 pynput>=1.7.6
+numpy>=1.24.0
+
+# Linux-specific dependencies (install only on Linux)
+python-xlib>=0.33; sys_platform == "linux"
+ewmh>=0.1.6; sys_platform == "linux"
+pyscreenshot>=3.1; sys_platform == "linux"
+
+# Windows-specific dependencies (install only on Windows)
+pywin32>=306; sys_platform == "win32"
+
+# macOS-specific dependencies (install only on macOS)
+pyobjc-core>=9.0; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices>=9.0; sys_platform == "darwin"
+pyobjc-framework-AppKit>=9.0; sys_platform == "darwin"
+
+# Configuration and utilities
+click>=8.1.0
+pydantic>=2.0.0
+toml>=0.10.2
+
+# Optional performance dependencies
+numba>=0.57.0
 
 # Linux display server integration
 python-xlib>=0.33; sys_platform == "linux"

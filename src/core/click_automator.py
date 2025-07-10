@@ -1,10 +1,10 @@
 """Mouse automation and click simulation."""
 
 import logging
-import time
 import platform
-from typing import Tuple, Optional
+import time
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 try:
     import pyautogui
@@ -13,8 +13,9 @@ except ImportError:
     HAS_PYAUTOGUI = False
 
 try:
-    from pynput.mouse import Button, Listener as MouseListener
+    from pynput.mouse import Button
     from pynput.mouse import Controller as MouseController
+    from pynput.mouse import Listener as MouseListener
     HAS_PYNPUT = True
 except ImportError:
     HAS_PYNPUT = False
@@ -22,8 +23,8 @@ except ImportError:
 if platform.system() == "Linux":
     try:
         import Xlib.display
-        import Xlib.X
         import Xlib.ext.xtest
+        import Xlib.X
         HAS_XLIB = True
     except ImportError:
         HAS_XLIB = False

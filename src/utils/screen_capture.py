@@ -1,10 +1,10 @@
 """Screen capture utilities for window and region screenshots."""
 
+import io
 import logging
 import platform
 from pathlib import Path
 from typing import Optional, Tuple, Union
-import io
 
 try:
     import cv2
