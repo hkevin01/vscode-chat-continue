@@ -1,0 +1,75 @@
+{
+  "detection": {
+    "method": "ocr",
+    "confidence_threshold": 0.8,
+    "button_text": [
+      "Continue",
+      "继续",
+      "Continuar", 
+      "Continuer",
+      "Weiter",
+      "続行",
+      "계속",
+      "Продолжить"
+    ],
+    "image_templates": [],
+    "ocr_language": "eng",
+    "preprocessing": {
+      "grayscale": true,
+      "contrast_enhancement": 1.2,
+      "noise_reduction": false
+    },
+    "cache_duration": 30,
+    "scale_factor": 1.0
+  },
+  "automation": {
+    "click_delay": 0.1,
+    "retry_attempts": 3,
+    "retry_delay": 1.0,
+    "safety_pause": 2.0,
+    "preserve_focus": true,
+    "window_activation_delay": 0.1,
+    "click_offset": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "filtering": {
+    "include_workspaces": [],
+    "exclude_workspaces": [
+      "test",
+      "tmp",
+      ".vscode",
+      "node_modules"
+    ],
+    "min_window_age": 5,
+    "require_visible": true,
+    "max_windows": 10
+  },
+  "safety": {
+    "user_activity_timeout": 5.0,
+    "pause_on_typing": true,
+    "pause_on_mouse_movement": false,
+    "dry_run_mode": false,
+    "emergency_stop_enabled": true
+  },
+  "hotkeys": {
+    "manual_trigger": "ctrl+alt+shift+c",
+    "toggle_pause": "ctrl+alt+shift+p", 
+    "emergency_stop": "ctrl+alt+shift+q"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "~/.local/share/vscode-continue/app.log",
+    "max_size": "10MB",
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "console_output": true
+  },
+  "performance": {
+    "max_screenshot_size": [1920, 1080],
+    "image_compression_quality": 85,
+    "parallel_processing": true,
+    "max_concurrent_windows": 3
+  }
+}
