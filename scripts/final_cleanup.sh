@@ -1,5 +1,19 @@
 #!/bin/bash
-# Manual Root Directory Cleanup - Run this to tidy up the project structure
+# Manual Root Directory Cleanup - Run this toeecho "📁 Moving new test files to tests/ directory:"
+for file in debug_button_detection.py test_detection.py test_output.py test_ocr.py enhanced_button_test.py comprehensive_diagnosis.py test_tesseract.py file_diagnosis.py coordinate_fallback.py debug_window_detection.py; do
+    if [ -f "$file" ]; then
+        if [ -f "tests/$file" ]; then
+            echo "  🗑️  rm $file (duplicate - already in tests/)"
+            rm "$file"
+        else
+            echo "  📦 mv $file tests/"
+            mv "$file" tests/
+        fi
+    else
+        echo "  ✅ $file (already moved or doesn't exist)"
+    fi
+done new test files to tests/ directory:"
+for file in debug_button_detection.py test_detection.py test_output.py test_ocr.py enhanced_button_test.py comprehensive_diagnosis.py test_tesseract.py file_diagnosis.py coordinate_fallback.py debug_window_detection.py; doidy up the project structure
 
 cd "$(dirname "$0")"
 

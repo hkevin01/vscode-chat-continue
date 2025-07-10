@@ -210,18 +210,24 @@ class WindowDetector:
                                 self._is_vscode_window(title)):
                             try:
                                 geometry = window.get_geometry()
-                                # Get the root window for absolute coordinates
-                                root = self.display.screen().root
+                                # Start with geometry coordinates
                                 abs_x, abs_y = geometry.x, geometry.y
                                 
                                 # Try to get absolute coordinates by translating
                                 try:
-                                    translated = window.translate_coords(
-                                        root, 0, 0)
-                                    abs_x, abs_y = translated.x, translated.y
-                                except Exception:
-                                    # Fallback to geometry coordinates
-                                    pass
+                                    root = self.display.screen().root
+                                    translated = window.translate_coords(root, 0, 0)
+                                    
+                                    # Only use translated coordinates if they seem reasonable
+                                    if (translated.x >= 0 and translated.y >= 0 and 
+                                        translated.x < 10000 and translated.y < 10000):
+                                        abs_x, abs_y = translated.x, translated.y
+                                    else:
+                                        self.logger.debug(f"Translated coords seem invalid: ({translated.x}, {translated.y}), using geometry")
+                                        
+                                except Exception as translate_error:
+                                    self.logger.debug(f"Translation failed: {translate_error}, using geometry coords")
+                                    # Keep using geometry coordinates
                                     
                             except Exception as geom_error:
                                 self.logger.debug(

@@ -98,6 +98,18 @@ class ScreenCapture:
                     
             elif HAS_PYSCREENSHOT and self.platform == "Linux":
                 try:
+                    # Force pyscreenshot to use a specific backend that doesn't conflict
+                    import pyscreenshot as ImageGrab_alt
+
+                    # Try to use PIL backend first to avoid gnome-screenshot
+                    return ImageGrab_alt.grab(backend='pil')
+                except Exception as e:
+                    self.logger.debug(f"pyscreenshot with PIL backend failed: {e}")
+                    try:
+                        # Fallback to imagemagick if available
+                        return ImageGrab_alt.grab(backend='imagemagick')
+                    except Exception as e2:
+                        self.logger.debug(f"pyscreenshot with imagemagick backend failed: {e2}")
                     return ImageGrab_alt.grab()
                 except Exception as e:
                     self.logger.debug(f"pyscreenshot fullscreen failed: {e}")
@@ -147,7 +159,15 @@ class ScreenCapture:
             
             if HAS_PYSCREENSHOT and self.platform == "Linux":
                 try:
-                    return ImageGrab_alt.grab(bbox=bbox)
+                    # Force pyscreenshot to avoid gnome-screenshot backend
+                    import pyscreenshot as ImageGrab_alt
+                    return ImageGrab_alt.grab(bbox=bbox, backend='pil')
+                except Exception as e:
+                    self.logger.debug(f"pyscreenshot region capture failed: {e}")
+                    try:
+                        return ImageGrab_alt.grab(bbox=bbox, backend='imagemagick')
+                    except Exception as e2:
+                        self.logger.debug(f"pyscreenshot imagemagick failed: {e2}")
                 except Exception as e:
                     self.logger.debug(f"pyscreenshot failed: {e}")
             
