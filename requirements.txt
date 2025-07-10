@@ -1,16 +1,3 @@
-# pyautogui>=0.9.54
-# pytesseract>=0.3.10
-# opencv-python>=4.8.0
-# Pillow>=10.0.0
-# psutil>=5.9.0
-# python-xlib>=0.33
-# pynput>=1.7.6
-# click>=8.1.0
-# pydantic>=2.0.0
-# toml>=0.10.2
-# numpy>=1.24.0
-# screeninfo>=0.8.1
-
 # Core automation dependencies
 pyautogui>=0.9.54
 pytesseract>=0.3.10
@@ -23,15 +10,15 @@ numpy>=1.24.0
 # GUI framework
 PyQt6>=6.5.0
 
-# Linux-specific dependencies (install only on Linux)
+# Linux-specific dependencies
 python-xlib>=0.33; sys_platform == "linux"
 ewmh>=0.1.6; sys_platform == "linux"
 pyscreenshot>=3.1; sys_platform == "linux"
 
-# Windows-specific dependencies (install only on Windows)
+# Windows-specific dependencies
 pywin32>=306; sys_platform == "win32"
 
-# macOS-specific dependencies (install only on macOS)
+# macOS-specific dependencies
 pyobjc-core>=9.0; sys_platform == "darwin"
 pyobjc-framework-ApplicationServices>=9.0; sys_platform == "darwin"
 pyobjc-framework-AppKit>=9.0; sys_platform == "darwin"
@@ -39,36 +26,15 @@ pyobjc-framework-AppKit>=9.0; sys_platform == "darwin"
 # Configuration and utilities
 click>=8.1.0
 pydantic>=2.0.0
-toml>=0.10.2
-
-# Optional performance dependencies
-numba>=0.57.0
-
-# Linux display server integration
-python-xlib>=0.33; sys_platform == "linux"
-ewmh>=0.1.6; sys_platform == "linux"
-
-# CLI and configuration
-click>=8.1.0
-pydantic>=2.0.0
 pydantic-settings>=2.0.0
 toml>=0.10.2
 
 # Image processing and utilities
-numpy>=1.24.0
 screeninfo>=0.8.1
 
 # Logging and monitoring
 structlog>=23.1.0
 colorlog>=6.7.0
 
-# Optional GUI dependencies
-tkinter; python_version >= "3.8"
-
-# Development and testing (commented out - see requirements-dev.txt)
-# pytest>=7.4.0
-# pytest-cov>=4.1.0
-# black>=23.7.0
-# flake8>=6.0.0
-# mypy>=1.5.0
-# pre-commit>=3.3.0
+# Optional performance dependencies
+numba>=0.57.0

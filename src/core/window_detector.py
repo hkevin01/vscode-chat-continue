@@ -7,6 +7,11 @@ from typing import Any, Dict, List, Optional
 
 import psutil
 
+# Initialize all platform flags to False first
+HAS_X11 = False
+HAS_WIN32 = False
+HAS_MACOS = False
+
 if platform.system() == "Linux":
     try:
         import Xlib
@@ -77,8 +82,15 @@ class WindowDetector:
             for proc in psutil.process_iter(['pid', 'name', 'exe', 'cmdline']):
                 try:
                     proc_info = proc.info
-                    name = proc_info.get('name', '').lower()
-                    exe = proc_info.get('exe', '').lower()
+                    if not proc_info:
+                        continue
+                        
+                    # Safely get name and exe, handling None values
+                    name = proc_info.get('name')
+                    exe = proc_info.get('exe')
+                    
+                    name = (name or '').lower() if name is not None else ''
+                    exe = (exe or '').lower() if exe is not None else ''
                     
                     # Check for VS Code process names
                     if any(vscode_name in name for vscode_name in [
@@ -88,12 +100,18 @@ class WindowDetector:
                     ]):
                         # Exclude helper processes
                         cmdline = proc_info.get('cmdline', [])
-                        if cmdline and not any(helper in ' '.join(cmdline).lower() for helper in [
-                            '--type=gpu-process',
-                            '--type=renderer',
-                            '--type=utility',
-                            '--type=zygote'
-                        ]):
+                        if cmdline:
+                            # Filter out None values from cmdline and safely join
+                            cmdline_filtered = [str(arg) for arg in cmdline if arg is not None]
+                            cmdline_str = ' '.join(cmdline_filtered)
+                            if not any(helper in cmdline_str.lower() for helper in [
+                                '--type=gpu-process',
+                                '--type=renderer',
+                                '--type=utility',
+                                '--type=zygote'
+                            ]):
+                                vscode_processes.append(proc)
+                        else:
                             vscode_processes.append(proc)
                             
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -111,14 +129,19 @@ class WindowDetector:
         Returns:
             List of VSCodeWindow objects
         """
-        if self.platform == "Linux":
-            return self._get_linux_windows()
-        elif self.platform == "Windows":
-            return self._get_windows_windows()
-        elif self.platform == "Darwin":
-            return self._get_macos_windows()
-        else:
-            self.logger.warning(f"Unsupported platform: {self.platform}")
+        try:
+            if self.platform == "Linux":
+                return self._get_linux_windows()
+            elif self.platform == "Windows":
+                return self._get_windows_windows()
+            elif self.platform == "Darwin":
+                return self._get_macos_windows()
+            else:
+                self.logger.warning(f"Unsupported platform: {self.platform}")
+                return []
+        except Exception as e:
+            self.logger.error(f"Error in get_vscode_windows: {e}")
+            # Return empty list as fallback to prevent crashes
             return []
     
     def _get_linux_windows(self) -> List[VSCodeWindow]:
@@ -128,46 +151,77 @@ class WindowDetector:
             return []
         
         windows = []
-        vscode_pids = {proc.pid for proc in self.get_vscode_processes()}
-        
         try:
-            # Get all windows
-            all_windows = self.ewmh.getClientList()
-            if not all_windows:
-                return windows
+            vscode_pids = {proc.pid for proc in self.get_vscode_processes()}
+        except Exception as e:
+            self.logger.error(f"Failed to get VS Code processes: {e}")
+            return []
+        
+        # Add emergency fallback to prevent hanging
+        try:
+            # Quick test to see if X11 is responsive
+            import signal
             
-            for window in all_windows:
-                try:
-                    # Get window properties
-                    title = self.ewmh.getWmName(window) or ""
-                    window_pid = self.ewmh.getWmPid(window)
-                    
-                    # Check if this is a VS Code window
-                    if window_pid in vscode_pids and self._is_vscode_window(title):
-                        # Get window geometry
-                        geometry = window.get_geometry()
+            def timeout_handler(signum, frame):
+                raise TimeoutError("X11 operation timed out")
+            
+            # Set a shorter 2-second timeout for initial X11 test
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(2)
+            
+            try:
+                # Test X11 responsiveness first with a simple call
+                self.display.sync()
+                signal.alarm(0)  # Cancel timeout if successful
+                
+                # Now try to get windows with a longer timeout
+                signal.alarm(5)
+                all_windows = self.ewmh.getClientList()
+                signal.alarm(0)  # Cancel timeout
+                
+                if not all_windows:
+                    self.logger.debug("No windows found via X11")
+                    return windows
+                
+                self.logger.debug(f"Found {len(all_windows)} total windows via X11")
+                
+                for window in all_windows:
+                    try:
+                        # Get window properties
+                        title = self.ewmh.getWmName(window) or ""
+                        window_pid = self.ewmh.getWmPid(window)
                         
-                        # Check if window is focused
-                        active_window = self.ewmh.getActiveWindow()
-                        is_focused = active_window == window
+                        # Check if this is a VS Code window
+                        if window_pid in vscode_pids and self._is_vscode_window(title):
+                            # Get window geometry
+                            geometry = window.get_geometry()
+                            
+                            # Check if window is focused
+                            active_window = self.ewmh.getActiveWindow()
+                            is_focused = active_window == window
+                            
+                            vscode_window = VSCodeWindow(
+                                window_id=window.id,
+                                title=title,
+                                pid=window_pid,
+                                x=geometry.x,
+                                y=geometry.y,
+                                width=geometry.width,
+                                height=geometry.height,
+                                is_focused=is_focused
+                            )
+                            
+                            windows.append(vscode_window)
+                            
+                    except Exception as e:
+                        self.logger.debug(f"Error processing window {window}: {e}")
+                        continue
                         
-                        vscode_window = VSCodeWindow(
-                            window_id=window.id,
-                            title=title,
-                            pid=window_pid,
-                            x=geometry.x,
-                            y=geometry.y,
-                            width=geometry.width,
-                            height=geometry.height,
-                            is_focused=is_focused
-                        )
-                        
-                        windows.append(vscode_window)
-                        
-                except Exception as e:
-                    self.logger.debug(f"Error processing window {window}: {e}")
-                    continue
-                    
+            except TimeoutError:
+                signal.alarm(0)  # Cancel timeout
+                self.logger.warning("X11 operation timed out, skipping window detection")
+                return []
+                
         except Exception as e:
             self.logger.error(f"Error getting Linux windows: {e}")
         
@@ -241,7 +295,7 @@ class WindowDetector:
             running_apps = workspace.runningApplications()
             
             vscode_apps = [app for app in running_apps 
-                          if any(name in app.bundleIdentifier().lower() 
+                          if any(name in (app.bundleIdentifier() or '').lower() 
                                 for name in ['code', 'vscode', 'cursor'])]
             
             for app in vscode_apps:

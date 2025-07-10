@@ -291,11 +291,19 @@ class AutomationEngine:
     async def _process_vscode_windows(self) -> None:
         """Process all VS Code windows for continue buttons."""
         try:
+            # Debug mode: check if window detection should be bypassed
+            debug_mode = self.config_manager.get('debug.skip_window_detection', False)
+            if debug_mode:
+                self.logger.info("Debug mode: skipping window detection")
+                return
+            
             # Get all VS Code windows
+            self.logger.debug("Starting window detection...")
             windows = self.window_detector.get_vscode_windows()
-            self.logger.debug(f"Found {len(windows)} VS Code windows")
+            self.logger.debug(f"Window detection complete. Found {len(windows)} VS Code windows")
             
             if not windows:
+                self.logger.debug("No VS Code windows found, skipping processing")
                 return
             
             self.stats['windows_processed'] += len(windows)

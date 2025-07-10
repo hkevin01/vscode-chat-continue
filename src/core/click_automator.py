@@ -20,6 +20,10 @@ try:
 except ImportError:
     HAS_PYNPUT = False
 
+# Initialize all platform flags to False first
+HAS_XLIB = False
+HAS_WIN32 = False
+
 if platform.system() == "Linux":
     try:
         import Xlib.display

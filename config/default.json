@@ -53,6 +53,11 @@
     "dry_run_mode": false,
     "emergency_stop_enabled": true
   },
+  "debug": {
+    "skip_window_detection": false,
+    "verbose_logging": false,
+    "simulate_buttons": false
+  },
   "hotkeys": {
     "manual_trigger": "ctrl+alt+shift+c",
     "toggle_pause": "ctrl+alt+shift+p", 

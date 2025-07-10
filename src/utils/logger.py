@@ -192,9 +192,12 @@ def setup_logging(level: str = "INFO",
                  max_file_size_mb: int = 10,
                  backup_count: int = 5) -> AutomationLogger:
     """Setup basic logging configuration for backwards compatibility."""
+    # Use default log path if none provided
+    default_log_path = "~/.local/share/vscode-chat-continue/automation.log"
+    
     config = {
         "level": level,
-        "file_path": str(log_file) if log_file else None,
+        "file_path": str(log_file) if log_file else default_log_path,
         "max_file_size_mb": max_file_size_mb,
         "backup_count": backup_count,
         "console_output": True
@@ -202,6 +205,8 @@ def setup_logging(level: str = "INFO",
     
     # Create a basic logger instance
     return AutomationLogger(config)
+
+
 def get_logger(name: str) -> logging.Logger:
     """Get a logger with the specified name.
     

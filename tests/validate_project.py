@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 # Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 def test_pyqt_gui():
     """Test PyQt6 GUI functionality."""
@@ -21,7 +21,8 @@ def test_pyqt_gui():
             return False
         
         # Test if GUI file exists and can be parsed
-        gui_file = Path(__file__).parent / "src" / "gui" / "main_window.py"
+        project_root = Path(__file__).parent.parent
+        gui_file = project_root / "src" / "gui" / "main_window.py"
         if not gui_file.exists():
             print("❌ GUI file not found")
             return False
@@ -36,10 +37,6 @@ def test_pyqt_gui():
     except py_compile.PyCompileError as e:
         print(f"❌ GUI compilation error: {e}")
         return False
-    except Exception as e:
-        print(f"❌ Error testing GUI: {e}")
-        return False
-        
     except ImportError as e:
         print(f"❌ Import error: {e}")
         return False
@@ -47,17 +44,19 @@ def test_pyqt_gui():
         print(f"❌ Error testing GUI: {e}")
         return False
 
+
 def test_automation_components():
     """Test automation component imports."""
     try:
-        from core.automation_engine import AutomationEngine
-        from core.config_manager import ConfigManager
-        from utils.logger import AutomationLogger
+        from core.automation_engine import AutomationEngine  # noqa: F401
+        from core.config_manager import ConfigManager  # noqa: F401
+        from utils.logger import setup_logging  # noqa: F401
         print("✅ All automation components imported successfully")
         return True
     except ImportError as e:
         print(f"⚠️  Some automation components not available: {e}")
         return True  # This is expected in some environments
+
 
 def main():
     """Run all tests."""
