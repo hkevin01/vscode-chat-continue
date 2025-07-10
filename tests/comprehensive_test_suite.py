@@ -413,7 +413,7 @@ class TestPhase4Polish(unittest.TestCase):
         """Test that tests cover all major components."""
         # Verify test files exist for major components
         test_files = [
-            "test_phases.py",  # This file
+            "tests/test_phases.py",  # This file
             "tests/unit/test_config_manager.py"
         ]
         

@@ -89,7 +89,7 @@ The project is now complete and ready for:
 1. **Installation**: Use `scripts/install.sh` for easy setup
 2. **Execution**: Run with `python src/main.py` or use GUI with `python src/gui/main_window.py`
 3. **Configuration**: Customize via GUI or edit config files
-4. **Testing**: Run `python validate_project.py` to verify installation
+4. **Testing**: Run `python tests/validate_project.py` to verify installation
 
 ## Success Metrics Achieved
 

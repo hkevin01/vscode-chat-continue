@@ -117,47 +117,50 @@ This project creates an automated solution to click the "Continue" button in VS 
 
 ```
 vscode-chat-continue/
+├── run.sh                              # 🚀 Main execution script
+├── README.md                           # 📖 Project documentation  
+├── requirements.txt                    # 📦 Python dependencies
+├── requirements-dev.txt               # 🔧 Development dependencies
+├── PROJECT_STRUCTURE.md              # 📋 Project organization guide
 ├── src/
 │   ├── core/
 │   │   ├── window_detector.py
 │   │   ├── button_finder.py
 │   │   ├── click_automator.py
+│   │   ├── automation_engine.py
 │   │   └── config_manager.py
 │   ├── utils/
-│   │   ├── image_utils.py
 │   │   ├── screen_capture.py
 │   │   └── logger.py
 │   ├── gui/
-│   │   ├── main_window.py
-│   │   └── tray_icon.py
+│   │   └── main_window.py
 │   └── main.py
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── fixtures/
+│   ├── test_phases.py                 # ✅ Moved from root
+│   ├── validate_project.py            # ✅ Moved from root
+│   ├── comprehensive_test_suite.py
+│   ├── test_all_phases.py
+│   └── unit/
+│       └── test_config_manager.py
 ├── scripts/
 │   ├── install.sh
-│   ├── setup.py
-│   └── run.py
+│   ├── setup.py                       # ✅ Moved from root
+│   ├── run.sh
+│   └── dev.sh
 ├── docs/
-│   ├── API.md
+│   ├── PROJECT_PLAN.md
+│   ├── PROJECT_COMPLETION_SUMMARY.md  # ✅ Moved from root
 │   ├── USAGE.md
+│   ├── TUTORIAL.md
 │   ├── TROUBLESHOOTING.md
+│   ├── FALLBACK_STRATEGY.md
+│   ├── EXTENSION_ALTERNATIVE.md
 │   └── CONTRIBUTING.md
-├── .github/
-│   ├── workflows/
-│   ├── ISSUE_TEMPLATE/
-│   └── PULL_REQUEST_TEMPLATE.md
-├── .copilot/
-│   ├── instructions.md
-│   └── context.md
 ├── config/
-│   ├── default.json
-│   └── example.json
-├── requirements.txt
-├── setup.py
-├── README.md
-└── LICENSE
+│   └── default.json
+├── .github/
+├── .copilot/
+└── .git/
 ```
 
 ## Analysis: Is This The Best Approach?
@@ -281,4 +284,30 @@ Focus all development effort on the Python tool with these enhancements:
 
 ## Getting Started
 
-See [USAGE.md](USAGE.md) for installation and usage instructions.
+### One-Command Setup ⚡
+```bash
+# Clone and run - everything is automatic!
+git clone <repository-url>
+cd vscode-chat-continue
+./run.sh  # Auto-installs dependencies and starts
+```
+
+### Usage Options
+```bash
+# Run the automation (auto-setup on first run)
+./run.sh
+
+# Launch modern GUI interface
+./run.sh --gui
+
+# Test mode without clicking anything
+./run.sh --dry-run
+
+# Validate installation and dependencies
+./run.sh --validate
+
+# Manual installation (optional)
+./scripts/install.sh
+```
+
+For detailed instructions, see [USAGE.md](USAGE.md) and [TUTORIAL.md](TUTORIAL.md).

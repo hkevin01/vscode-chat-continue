@@ -19,20 +19,23 @@ Automatically click the "Continue" button in VS Code Copilot Chat across all ope
 - VS Code with Copilot Chat extension
 - Screen capture permissions
 
-## 🛠️ Installation
+## 🛠️ Installation & Setup
 
-### Quick Install
+### One-Command Setup ⚡
 ```bash
 git clone https://github.com/yourusername/vscode-chat-continue.git
 cd vscode-chat-continue
-chmod +x scripts/install.sh
-./scripts/install.sh
+./run.sh  # Automatically installs everything and starts!
 ```
 
-### Manual Install
+### Manual Install (Optional)
 ```bash
-pip install -r requirements.txt
-python setup.py install
+# If you prefer to install manually first
+chmod +x scripts/install.sh
+./scripts/install.sh
+
+# Then run normally
+./run.sh
 ```
 
 ## 🧪 Testing
@@ -41,7 +44,7 @@ Before using the automation tool, run the test script to verify all components a
 
 ```bash
 # Test Phase 1 & 2 functionality
-python test_phases.py
+python tests/test_phases.py
 ```
 
 This will test:
@@ -53,6 +56,24 @@ This will test:
 
 ## 🎯 Usage
 
+### Quick Start with run.sh
+```bash
+# Simple run (command line interface)
+./run.sh
+
+# Launch modern GUI interface
+./run.sh --gui
+
+# Test mode without clicking anything
+./run.sh --dry-run
+
+# Validate installation and dependencies
+./run.sh --validate
+
+# Use custom configuration
+./run.sh --config /path/to/config.json
+```
+
 ### Basic Usage
 ```bash
 # Run once to click all Continue buttons
@@ -63,6 +84,9 @@ python src/main.py --watch --interval 30
 
 # Dry run to see what would be clicked
 python src/main.py --dry-run
+
+# Launch GUI interface
+python src/gui/main_window.py
 ```
 
 ### Command Line Options

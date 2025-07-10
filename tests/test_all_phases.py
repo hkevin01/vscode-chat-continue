@@ -84,7 +84,7 @@ class TestPhase1Foundation(unittest.TestCase):
             "src/utils/logger.py",
             "src/utils/screen_capture.py",
             "requirements.txt",
-            "setup.py"
+            "scripts/setup.py"
         ]
         
         for file_name in expected_files:

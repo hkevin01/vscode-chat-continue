@@ -48,7 +48,7 @@ The installer will:
 source venv/bin/activate
 
 # Test the installation
-python test_phases.py
+python tests/test_phases.py
 ```
 
 ### Step 2: Configuration
