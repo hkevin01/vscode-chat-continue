@@ -173,9 +173,51 @@ if $GUI_MODE; then
     fi
 fi
 
+# Auto-install tesseract if missing
+install_tesseract() {
+    print_warning "Tesseract OCR not found. Installing automatically..."
+    
+    if command -v apt-get >/dev/null 2>&1; then
+        print_info "Installing tesseract using apt-get..."
+        sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
+    elif command -v dnf >/dev/null 2>&1; then
+        print_info "Installing tesseract using dnf..."
+        sudo dnf install -y tesseract tesseract-langpack-eng
+    elif command -v pacman >/dev/null 2>&1; then
+        print_info "Installing tesseract using pacman..."
+        sudo pacman -S --noconfirm tesseract tesseract-data-eng
+    elif command -v zypper >/dev/null 2>&1; then
+        print_info "Installing tesseract using zypper..."
+        sudo zypper install -y tesseract-ocr tesseract-ocr-traineddata-english
+    else
+        print_error "Could not determine package manager."
+        print_info "Please install tesseract-ocr manually:"
+        print_info "  Ubuntu/Debian: sudo apt-get install tesseract-ocr tesseract-ocr-eng"
+        print_info "  Fedora/RHEL:   sudo dnf install tesseract tesseract-langpack-eng"
+        print_info "  Arch Linux:    sudo pacman -S tesseract tesseract-data-eng"
+        return 1
+    fi
+    
+    # Verify installation
+    if command -v tesseract &> /dev/null; then
+        print_success "Tesseract OCR installed successfully!"
+        tesseract --version | head -1
+        return 0
+    else
+        print_error "Tesseract installation failed."
+        return 1
+    fi
+}
+
 # Check system dependencies
 if ! command -v tesseract &> /dev/null; then
-    missing_deps+=("tesseract-ocr system package")
+    print_warning "Tesseract OCR not found. Attempting auto-installation..."
+    if install_tesseract; then
+        print_success "Tesseract OCR installed successfully!"
+    else
+        missing_deps+=("tesseract-ocr system package")
+        print_error "Auto-installation failed. Please install manually."
+    fi
 fi
 
 if [ ${#missing_deps[@]} -gt 0 ]; then

@@ -74,8 +74,8 @@ class ButtonFinder:
             r'\bmore\b',
         ]
         
-        # OCR configuration
-        self.tesseract_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?:;-_+()[]{}"/\\ '
+        # OCR configuration with more permissive settings
+        self.tesseract_config = r'--oem 3 --psm 6'
         
         self._check_dependencies()
     

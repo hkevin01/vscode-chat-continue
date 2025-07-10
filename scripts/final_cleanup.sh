@@ -54,8 +54,25 @@ for file in AUTO_SETUP_ENHANCEMENT.md PROJECT_COMPLETION_SUMMARY.md PROJECT_STRU
 done
 
 echo ""
-echo "🗑️  Removing temporary cleanup scripts:"
-for file in cleanup_files.py cleanup_root.sh organize_files.sh; do
+echo ""
+echo "� Moving new test files to tests/ directory:"
+for file in debug_button_detection.py test_detection.py test_output.py test_ocr.py enhanced_button_test.py; do
+    if [ -f "$file" ]; then
+        if [ -f "tests/$file" ]; then
+            echo "  🗑️  rm $file (duplicate - already in tests/)"
+            rm "$file"
+        else
+            echo "  📦 mv $file tests/"
+            mv "$file" tests/
+        fi
+    else
+        echo "  ✅ $file (already moved or doesn't exist)"
+    fi
+done
+
+echo ""
+echo "🗑️  Removing temporary files:"
+for file in cleanup_files.py cleanup_root.sh organize_files.sh install_tesseract.sh; do
     if [ -f "$file" ]; then
         echo "  🗑️  rm $file"
         rm "$file"

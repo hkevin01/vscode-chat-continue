@@ -34,11 +34,11 @@ try:
             
             # Test window detection
             window_detector = WindowDetector()
-            windows = window_detector.find_vscode_windows()
+            windows = window_detector.get_vscode_windows()
             f.write(f"Found {len(windows)} VS Code windows\n")
             
             for i, window in enumerate(windows):
-                f.write(f"  Window {i+1}: {window['title']} at ({window['x']}, {window['y']})\n")
+                f.write(f"  Window {i+1}: {window.title} at ({window.x}, {window.y})\n")
             
             # Test button detection on first window if available
             if windows:
@@ -54,9 +54,9 @@ try:
                     f.write(f"Found {len(buttons)} Continue buttons\n")
                     
                     for j, button in enumerate(buttons):
-                        abs_x = windows[0]['x'] + button['x']
-                        abs_y = windows[0]['y'] + button['y']
-                        f.write(f"  Button {j+1}: ({abs_x}, {abs_y}) confidence: {button['confidence']:.2f}\n")
+                        abs_x = windows[0].x + button.x
+                        abs_y = windows[0].y + button.y
+                        f.write(f"  Button {j+1}: ({abs_x}, {abs_y}) confidence: {button.confidence:.2f}\n")
                 else:
                     f.write("Failed to capture screenshot\n")
             

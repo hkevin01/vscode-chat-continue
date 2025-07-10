@@ -39,7 +39,7 @@ def main():
         screen_capture = ScreenCapture()
         
         # Get VS Code windows
-        windows = window_detector.find_vscode_windows()
+        windows = window_detector.get_vscode_windows()
         logger.info(f"Found {len(windows)} VS Code windows")
         
         if not windows:
