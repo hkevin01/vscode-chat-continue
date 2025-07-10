@@ -2,17 +2,24 @@
 
 import asyncio
 import logging
-from typing import List, Optional
+import time
+from typing import Any, Dict, List, Optional
 
 from core.button_finder import ButtonFinder, ButtonLocation
-from core.click_automator import ClickAutomator, ClickResult
+from core.click_automator import ClickAutomator
 from core.config_manager import ConfigManager
 from core.window_detector import VSCodeWindow, WindowDetector
 from utils.screen_capture import ScreenCapture
 
+try:
+    from pynput import keyboard, mouse
+    PYNPUT_AVAILABLE = True
+except ImportError:
+    PYNPUT_AVAILABLE = False
+
 
 class AutomationEngine:
-    """Main automation engine that coordinates button detection and clicking."""
+    """Main automation engine coordinates button detection and clicking."""
     
     def __init__(self, config_manager: ConfigManager):
         """Initialize the automation engine.
@@ -24,6 +31,10 @@ class AutomationEngine:
         self.logger = logging.getLogger(__name__)
         self.running = False
         self._task: Optional[asyncio.Task] = None
+        self._paused = False
+        self._emergency_stop = False
+        self._user_activity_detected = False
+        self._last_user_activity = 0.0
         
         # Initialize components
         self.window_detector = WindowDetector()
@@ -34,15 +45,191 @@ class AutomationEngine:
         )
         self.screen_capture = ScreenCapture()
         
+        # Performance monitoring
+        self.performance_metrics = {
+            'operation_times': [],
+            'memory_usage': [],
+            'cpu_usage': [],
+            'cache_hits': 0,
+            'cache_misses': 0
+        }
+        
         # Statistics
         self.stats = {
             'windows_processed': 0,
             'buttons_found': 0,
             'clicks_attempted': 0,
             'clicks_successful': 0,
-            'errors': 0
+            'errors': 0,
+            'start_time': None,
+            'total_runtime': 0,
+            'fallback_activations': 0,
+            'performance_optimizations': 0
         }
+        
+        # Safety features
+        self._setup_safety_features()
+        
+        # Cache for performance optimization
+        self._window_cache = {}
+        cache_timeout_key = 'performance.cache_timeout_seconds'
+        self._cache_timeout = config_manager.get(cache_timeout_key, 30)
     
+    def _setup_safety_features(self) -> None:
+        """Set up safety features including emergency stop and monitoring."""
+        if not PYNPUT_AVAILABLE:
+            msg = "pynput not available - safety features disabled"
+            self.logger.warning(msg)
+            return
+            
+        safety_config = self.config_manager.get('safety', {})
+        
+        # Emergency stop key listener
+        if safety_config.get('emergency_stop_key'):
+            def on_key_press(key):
+                try:
+                    stop_key = safety_config['emergency_stop_key']
+                    if hasattr(key, 'name') and key.name == stop_key:
+                        self.emergency_stop()
+                except AttributeError:
+                    stop_key = safety_config['emergency_stop_key']
+                    if hasattr(key, 'char') and key.char == stop_key:
+                        self.emergency_stop()
+                        
+            self._key_listener = keyboard.Listener(on_press=on_key_press)
+            self._key_listener.start()
+        
+        # User activity monitoring
+        if safety_config.get('pause_on_user_activity', True):
+            def on_mouse_activity(*args):
+                self._last_user_activity = time.time()
+                self._user_activity_detected = True
+                
+            def on_key_activity(*args):
+                self._last_user_activity = time.time()
+                self._user_activity_detected = True
+                
+            self._mouse_listener = mouse.Listener(
+                on_move=on_mouse_activity,
+                on_click=on_mouse_activity,
+                on_scroll=on_mouse_activity
+            )
+            self._activity_keyboard_listener = keyboard.Listener(
+                on_press=on_key_activity
+            )
+            
+            self._mouse_listener.start()
+            self._activity_keyboard_listener.start()
+    
+    def pause(self) -> None:
+        """Pause automation execution."""
+        self._paused = True
+        self.logger.info("Automation paused")
+    
+    def resume(self) -> None:
+        """Resume automation execution."""
+        self._paused = False
+        self.logger.info("Automation resumed")
+    
+    def emergency_stop(self) -> None:
+        """Emergency stop - immediately halt all automation."""
+        self._emergency_stop = True
+        self._paused = True
+        self.logger.warning("EMERGENCY STOP activated")
+        
+    def is_user_activity_blocking(self) -> bool:
+        """Check if user activity should block automation."""
+        if not self._user_activity_detected:
+            return False
+            
+        safety_config = self.config_manager.get('safety', {})
+        timeout_key = 'user_activity_timeout_seconds'
+        activity_timeout = safety_config.get(timeout_key, 5)
+        
+        if time.time() - self._last_user_activity > activity_timeout:
+            self._user_activity_detected = False
+            return False
+            
+        return True
+    
+    def _should_pause_automation(self) -> bool:
+        """Check if automation should be paused for safety reasons."""
+        if self._emergency_stop:
+            return True
+            
+        if self._paused:
+            return True
+            
+        if self.is_user_activity_blocking():
+            return True
+            
+        return False
+    
+    def _optimize_performance(self) -> None:
+        """Apply performance optimizations."""
+        # Clean old cache entries
+        current_time = time.time()
+        expired_keys = [
+            key for key, (data, timestamp) in self._window_cache.items()
+            if current_time - timestamp > self._cache_timeout
+        ]
+        
+        for key in expired_keys:
+            del self._window_cache[key]
+            
+        # Record performance optimization
+        if expired_keys:
+            self.stats['performance_optimizations'] += 1
+    
+    def _get_cached_windows(self) -> Optional[List[VSCodeWindow]]:
+        """Get cached window list if available and fresh."""
+        cache_key = "vscode_windows"
+        current_time = time.time()
+        
+        if cache_key in self._window_cache:
+            data, timestamp = self._window_cache[cache_key]
+            if current_time - timestamp < self._cache_timeout:
+                self.performance_metrics['cache_hits'] += 1
+                return data
+                
+        self.performance_metrics['cache_misses'] += 1
+        return None
+    
+    def _cache_windows(self, windows: List[VSCodeWindow]) -> None:
+        """Cache window list with timestamp."""
+        cache_key = "vscode_windows"
+        self._window_cache[cache_key] = (windows, time.time())
+    
+    def get_performance_report(self) -> Dict[str, Any]:
+        """Get detailed performance and statistics report."""
+        current_time = time.time()
+        runtime = current_time - (self.stats['start_time'] or current_time)
+        
+        return {
+            'runtime_seconds': runtime,
+            'statistics': self.stats.copy(),
+            'performance_metrics': self.performance_metrics.copy(),
+            'cache_efficiency': {
+                'hit_rate': (
+                    self.performance_metrics['cache_hits'] /
+                    max(1, (self.performance_metrics['cache_hits'] +
+                            self.performance_metrics['cache_misses']))
+                ),
+                'total_requests': (
+                    self.performance_metrics['cache_hits'] +
+                    self.performance_metrics['cache_misses']
+                )
+            },
+            'success_rate': (
+                self.stats['clicks_successful'] /
+                max(1, self.stats['clicks_attempted'])
+            ),
+            'average_windows_per_cycle': (
+                self.stats['windows_processed'] /
+                max(1, self.stats.get('cycles_completed', 1))
+            )
+        }
+
     async def start(self) -> None:
         """Start the automation engine."""
         if self.running:
@@ -86,6 +273,11 @@ class AutomationEngine:
         
         while self.running:
             try:
+                if self._should_pause_automation():
+                    self.logger.info("Automation paused or stopped due to safety features")
+                    await asyncio.sleep(interval)
+                    continue
+                
                 # TODO: Implement actual automation logic
                 await self._process_vscode_windows()
                 await asyncio.sleep(interval)

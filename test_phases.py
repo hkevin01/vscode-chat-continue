@@ -206,7 +206,7 @@ async def main():
     print("=" * 60)
     
     # Setup logging
-    setup_logging("DEBUG")
+    logging.basicConfig(level=logging.DEBUG)
     
     # Run tests
     tests = [

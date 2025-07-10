@@ -14,30 +14,79 @@ class ConfigManager:
             "interval_seconds": 2.0,
             "max_retries": 3,
             "enable_audio_feedback": True,
-            "dry_run": False
+            "dry_run": False,
+            "click_delay_ms": 100,
+            "typing_delay_ms": 50,
+            "focus_delay_ms": 200
         },
         "detection": {
             "confidence_threshold": 0.8,
             "ocr_language": "eng",
-            "button_variants": ["Continue", "Continue >", "Continue..."],
-            "search_regions": []
+            "button_variants": ["Continue", "Continue >", "Continue...", "Generate more"],
+            "search_regions": [],
+            "template_matching_threshold": 0.9,
+            "use_ocr": True,
+            "use_template_matching": True,
+            "use_accessibility_api": False
+        },
+        "fallback_strategy": {
+            "enabled": True,
+            "text_commands": ["continue", "please continue", "go on"],
+            "typing_speed": "normal",
+            "max_retries": 3,
+            "timeout_seconds": 5,
+            "use_clipboard": False,
+            "prefer_buttons": True
+        },
+        "input_detection": {
+            "methods": ["ocr", "visual", "position"],
+            "confidence_threshold": 0.8,
+            "search_regions": ["bottom_panel", "side_panel", "editor"],
+            "chat_indicators": ["Ask Copilot", "Type a message", "Chat with Copilot"]
         },
         "safety": {
-            "require_confirmation": True,
+            "require_confirmation": False,
             "emergency_stop_key": "escape",
             "pause_on_user_activity": True,
-            "max_automation_time_minutes": 60
+            "max_automation_time_minutes": 60,
+            "preserve_focus": True,
+            "backup_clipboard": True,
+            "safe_mode": False
+        },
+        "performance": {
+            "screenshot_region_optimization": True,
+            "cache_window_positions": True,
+            "parallel_window_processing": False,
+            "max_screenshot_size": "1920x1080",
+            "compression_quality": 85
+        },
+        "monitoring": {
+            "enable_metrics": True,
+            "log_performance": True,
+            "track_success_rate": True,
+            "alert_on_failures": False,
+            "stats_file": "automation_stats.json"
         },
         "logging": {
             "level": "INFO",
             "file_path": "~/.local/share/vscode-chat-continue/automation.log",
             "max_file_size_mb": 10,
-            "backup_count": 5
+            "backup_count": 5,
+            "console_output": True,
+            "detailed_timing": False
         },
         "windows": {
-            "vscode_process_names": ["code", "code-oss", "codium"],
-            "chat_window_patterns": ["Copilot Chat", "GitHub Copilot"],
-            "exclude_patterns": []
+            "vscode_process_names": ["code", "code-oss", "codium", "cursor"],
+            "chat_window_patterns": ["Copilot Chat", "GitHub Copilot", "AI Assistant"],
+            "exclude_patterns": ["Settings", "Extensions", "Terminal"],
+            "minimum_window_size": [300, 200],
+            "focus_timeout_seconds": 2.0
+        },
+        "hotkeys": {
+            "trigger_automation": "ctrl+alt+c",
+            "emergency_stop": "ctrl+alt+s",
+            "toggle_pause": "ctrl+alt+p",
+            "dry_run_mode": "ctrl+alt+d"
         }
     }
     
