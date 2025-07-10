@@ -2,21 +2,22 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import unittest
 from unittest.mock import Mock, patch
 
 import numpy as np
+from PIL import Image
 
 from src.core.automation_engine import AutomationEngine
 from src.core.button_finder import ButtonFinder, ButtonLocation
 from src.core.click_automator import ClickAutomator
 from src.core.config_manager import ConfigManager
-from src.core.window_detector import WindowDetector, VSCodeWindow
+from src.core.window_detector import VSCodeWindow, WindowDetector
 from src.utils.logger import AutomationLogger
 from src.utils.screen_capture import ScreenCapture
-from PIL import Image
 
 
 class TestPhase1Foundation(unittest.TestCase):

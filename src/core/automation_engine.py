@@ -5,11 +5,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+from ..utils.screen_capture import ScreenCapture
 from .button_finder import ButtonFinder, ButtonLocation
 from .click_automator import ClickAutomator
 from .config_manager import ConfigManager
 from .window_detector import VSCodeWindow, WindowDetector
-from ..utils.screen_capture import ScreenCapture
 
 try:
     from pynput import keyboard, mouse

@@ -1,15 +1,20 @@
 """Unit tests for configuration manager."""
 
 import json
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import mock_open, patch
 
-import pytest
+# Add project root to Python path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-from core.config_manager import ConfigManager
+from src.core.config_manager import ConfigManager
 
 
-class TestConfigManager:
+class TestConfigManager(unittest.TestCase):
     """Test cases for ConfigManager class."""
     
     def test_default_config_initialization(self):
@@ -17,9 +22,9 @@ class TestConfigManager:
         with patch.object(Path, 'exists', return_value=False):
             config = ConfigManager()
             
-            assert config.get('automation.interval_seconds') == 2.0
-            assert config.get('safety.require_confirmation') is True
-            assert config.get('logging.level') == 'INFO'
+            self.assertEqual(config.get('automation.interval_seconds'), 2.0)
+            self.assertTrue(config.get('safety.require_confirmation'))
+            self.assertEqual(config.get('logging.level'), 'INFO')
     
     def test_custom_config_path(self, tmp_path):
         """Test initialization with custom config path."""
