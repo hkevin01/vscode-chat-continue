@@ -114,7 +114,8 @@ class ButtonFinder:
             )
     
     def find_continue_buttons(
-        self, image: Image.Image, window_x: int = 0, window_y: int = 0
+        self, image: Image.Image, window_x: int = 0, window_y: int = 0,
+        methods_to_run: Optional[List[str]] = None
     ) -> List[ButtonLocation]:
         """Find all Continue buttons in an image.
         
@@ -122,42 +123,69 @@ class ButtonFinder:
             image: PIL Image to search in
             window_x: X offset of the window (for absolute coordinates)
             window_y: Y offset of the window (for absolute coordinates)
+            methods_to_run: For testing, specify which methods to run.
+                            e.g., ['ocr', 'template']
             
         Returns:
             List of ButtonLocation objects
         """
         buttons = []
         
+        # Determine which methods to run
+        run_all = methods_to_run is None
+        
         try:
             # Method 1: OCR-based text detection
-            if HAS_TESSERACT:
-                ocr_buttons = self._find_buttons_ocr(image, window_x, window_y)
+            if (run_all or 'ocr' in methods_to_run) and HAS_TESSERACT:
+                ocr_buttons = self._find_buttons_ocr(
+                    image, window_x, window_y
+                )
                 buttons.extend(ocr_buttons)
                 self.logger.debug(f"OCR found {len(ocr_buttons)} buttons")
             
             # Method 2: Template matching
-            if HAS_OPENCV:
-                template_buttons = self._find_buttons_template(image, window_x, window_y)
+            if (run_all or 'template' in methods_to_run) and HAS_OPENCV:
+                template_buttons = self._find_buttons_template(
+                    image, window_x, window_y
+                )
                 buttons.extend(template_buttons)
-                self.logger.debug(f"Template matching found {len(template_buttons)} buttons")
+                self.logger.debug(
+                    f"Template matching found {len(template_buttons)} buttons"
+                )
             
             # Method 3: Color-based detection
-            color_buttons = self._find_buttons_color(image, window_x, window_y)
-            buttons.extend(color_buttons)
-            self.logger.debug(f"Color detection found {len(color_buttons)} buttons")
+            if (run_all or 'color' in methods_to_run):
+                color_buttons = self._find_buttons_color(
+                    image, window_x, window_y
+                )
+                buttons.extend(color_buttons)
+                self.logger.debug(
+                    f"Color detection found {len(color_buttons)} buttons"
+                )
             
             # Method 4: Blue rectangle fallback (when OCR unavailable)
-            if not HAS_TESSERACT:
-                self.logger.info("OCR not available, using blue rectangle fallback")
-                blue_buttons = self._find_blue_rectangles(image, window_x, window_y)
+            if (
+                (run_all or 'blue_rectangle' in methods_to_run)
+                and not HAS_TESSERACT
+            ):
+                self.logger.info(
+                    "OCR not available, using blue rectangle fallback"
+                )
+                blue_buttons = self._find_blue_rectangles(
+                    image, window_x, window_y
+                )
                 buttons.extend(blue_buttons)
-                self.logger.debug(f"Blue rectangle detection found {len(blue_buttons)} buttons")
+                self.logger.debug(
+                    f"Blue rect detection found {len(blue_buttons)} buttons"
+                )
             
             # Remove duplicates and sort by confidence
             buttons = self._deduplicate_buttons(buttons)
             buttons.sort(key=lambda b: b.confidence, reverse=True)
             
-            self.logger.debug(f"Total found {len(buttons)} continue buttons after deduplication")
+            self.logger.debug(
+                f"Total found {len(buttons)} buttons after deduplication"
+            )
             
         except Exception as e:
             self.logger.error(f"Error finding buttons: {e}")
