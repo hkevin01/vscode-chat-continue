@@ -60,13 +60,34 @@ class WindowDetector:
         self.logger = logging.getLogger(__name__)
         self.platform = platform.system()
         
-        # Initialize platform-specific components
+        # Initialize platform-specific components with timeout protection
+        self.display = None
+        self.ewmh = None
+        
         if self.platform == "Linux" and HAS_X11:
             try:
-                self.display = Xlib.display.Display()
-                self.ewmh = EWMH()
+                import signal
+                
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("X11 initialization timeout")
+                
+                # Set a 5-second timeout for X11 initialization
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(5)
+                
+                try:
+                    self.display = Xlib.display.Display()
+                    self.ewmh = EWMH()
+                    self.logger.debug("X11 components initialized successfully")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize X11: {e}")
+                    self.display = None
+                    self.ewmh = None
+                finally:
+                    signal.alarm(0)  # Cancel the alarm
+                    
             except Exception as e:
-                self.logger.warning(f"Failed to initialize X11: {e}")
+                self.logger.warning(f"X11 initialization error: {e}")
                 self.display = None
                 self.ewmh = None
         
