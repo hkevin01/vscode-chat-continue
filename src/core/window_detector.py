@@ -60,37 +60,31 @@ class WindowDetector:
         self.logger = logging.getLogger(__name__)
         self.platform = platform.system()
         
-        # Initialize platform-specific components with timeout protection
+        # Initialize platform-specific components
         self.display = None
         self.ewmh = None
         
         if self.platform == "Linux" and HAS_X11:
+            import os
+
+            # Check if we have a valid DISPLAY
+            display_env = os.environ.get('DISPLAY')
+            if not display_env:
+                self.logger.warning(
+                    "No DISPLAY environment variable set - "
+                    "X11 window detection unavailable"
+                )
+                return
+            
             try:
-                import signal
-                
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("X11 initialization timeout")
-                
-                # Set a 5-second timeout for X11 initialization
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(5)
-                
-                try:
-                    self.display = Xlib.display.Display()
-                    self.ewmh = EWMH()
-                    self.logger.debug("X11 components initialized successfully")
-                except Exception as e:
-                    self.logger.warning(f"Failed to initialize X11: {e}")
-                    self.display = None
-                    self.ewmh = None
-                finally:
-                    signal.alarm(0)  # Cancel the alarm
-                    
+                self.display = Xlib.display.Display()
+                self.ewmh = EWMH()
+                self.logger.debug("X11 components initialized successfully")
             except Exception as e:
-                self.logger.warning(f"X11 initialization error: {e}")
+                self.logger.warning(f"Failed to initialize X11: {e}")
                 self.display = None
                 self.ewmh = None
-        
+    
     def get_vscode_processes(self) -> List[psutil.Process]:
         """Get all running VS Code processes.
         
