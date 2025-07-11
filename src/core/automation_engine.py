@@ -42,6 +42,16 @@ class AutomationEngine:
         self._user_activity_detected = False
         self._last_user_activity = 0.0
         
+        # Validate component configurations before initialization
+        if not isinstance(self.config_manager.get('detection'), dict):
+            msg = "Invalid 'detection' config. Must be a dictionary."
+            self.logger.error(msg)
+            raise ValueError(msg)
+        if not isinstance(self.config_manager.get('automation'), dict):
+            msg = "Invalid 'automation' config. Must be a dictionary."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
         # Initialize components
         self.window_detector = WindowDetector()
         self.button_finder = ButtonFinder(self.config_manager)
