@@ -2,20 +2,14 @@
 
 import asyncio
 import logging
-import sys
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-from src.core.button_finder import ButtonFinder, ButtonLocation
-from src.core.click_automator import ClickAutomator
-from src.core.config_manager import ConfigManager
-from src.core.window_detector import VSCodeWindow, WindowDetector
-from src.utils.screen_capture import ScreenCapture
+from core.button_finder import ButtonFinder, ButtonLocation
+from core.click_automator import ClickAutomator
+from core.config_manager import ConfigManager
+from core.window_detector import VSCodeWindow, WindowDetector
+from utils.screen_capture import ScreenCapture
 
 try:
     from pynput import keyboard, mouse
@@ -42,19 +36,9 @@ class AutomationEngine:
         self._user_activity_detected = False
         self._last_user_activity = 0.0
         
-        # Validate component configurations before initialization
-        if not isinstance(self.config_manager.get('detection'), dict):
-            msg = "Invalid 'detection' config. Must be a dictionary."
-            self.logger.error(msg)
-            raise ValueError(msg)
-        if not isinstance(self.config_manager.get('automation'), dict):
-            msg = "Invalid 'automation' config. Must be a dictionary."
-            self.logger.error(msg)
-            raise ValueError(msg)
-
         # Initialize components
         self.window_detector = WindowDetector()
-        self.button_finder = ButtonFinder(self.config_manager)
+        self.button_finder = ButtonFinder()
         self.click_automator = ClickAutomator(
             click_delay=config_manager.get('automation.click_delay', 0.1),
             move_duration=config_manager.get('automation.move_duration', 0.2)

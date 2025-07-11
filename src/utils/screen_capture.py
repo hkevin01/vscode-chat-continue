@@ -2,16 +2,17 @@
 
 import io
 import logging
+import os
 import platform
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 try:
-    # import cv2
-    # import numpy as np
-    HAS_OPENCV = False  # No direct usage in this file
+    import cv2
+    import numpy as np
+    HAS_OPENCV = True
 except ImportError:
     HAS_OPENCV = False
 
@@ -23,23 +24,20 @@ except ImportError:
 
 try:
     import pyautogui
-    HAS_PYAUTOGUI = True
+
+    # COMPLETELY disable pyautogui on Linux to prevent gnome-screenshot conflicts
+    if platform.system() == "Linux":
+        HAS_PYAUTOGUI = False
+        pyautogui = None
+        # Don't even test pyautogui on Linux - any call could trigger gnome-screenshot
+    else:
+        # On Windows/macOS, pyautogui should be safe
+        HAS_PYAUTOGUI = True
 except ImportError:
     HAS_PYAUTOGUI = False
 
-if platform.system() == "Linux":
-    try:
-        import pyscreenshot as ImageGrab_alt
-
-        # Force pyscreenshot to avoid gnome-screenshot to prevent snap conflicts
-        import pyscreenshot.backends
-
-        # Remove gnome-screenshot from available backends if present
-        if hasattr(pyscreenshot.backends, 'gnome_screenshot'):
-            delattr(pyscreenshot.backends, 'gnome_screenshot')
-        HAS_PYSCREENSHOT = True
-    except ImportError:
-        HAS_PYSCREENSHOT = False
+# Completely disable pyscreenshot on Linux to avoid gnome-screenshot snap conflicts
+HAS_PYSCREENSHOT = False
 
 
 class ScreenCapture:
@@ -50,12 +48,29 @@ class ScreenCapture:
         self.logger = logging.getLogger(__name__)
         self.platform = platform.system()
         
-        # Disable gnome-screenshot to prevent snap conflicts
-        import os
-        os.environ['PYSCREENSHOT_BACKEND'] = 'pil'
+        # Aggressively prevent gnome-screenshot on Linux
+        if self.platform == "Linux":
+            self._disable_gnome_screenshot()
         
         # Check available libraries
         self._check_dependencies()
+    
+    def _disable_gnome_screenshot(self) -> None:
+        """Aggressively disable gnome-screenshot on Linux to prevent snap conflicts."""
+        import os
+
+        # Set environment variables to prevent gnome-screenshot usage
+        os.environ['PYSCREENSHOT_BACKEND'] = 'pil'
+        os.environ['GNOME_SCREENSHOT_DISABLE'] = '1'
+        os.environ['NO_GNOME_SCREENSHOT'] = '1'
+        
+        # Try to prevent any screenshot tools that might trigger gnome-screenshot
+        os.environ['SCROT_DISABLE_GNOME'] = '1'
+        
+        # Disable any GTK/GNOME screenshot services
+        for env_var in ['GNOME_SCREENSHOT_DIR', 'SCREENSHOT_TOOL']:
+            if env_var in os.environ:
+                del os.environ[env_var]
     
     def _check_dependencies(self) -> None:
         """Check which screen capture libraries are available."""
@@ -82,54 +97,79 @@ class ScreenCapture:
             PIL Image object or None if capture failed
         """
         try:
-            # For Linux, prefer scrot due to snap conflicts  
+            # Linux-specific capture logic
             if self.platform == "Linux":
+                # Method 1: ImageMagick 'import' command
                 try:
-                    result = subprocess.run(['scrot', '/tmp/fullscreen.png'], 
-                                          capture_output=True, timeout=10)
-                    if result.returncode == 0:
-                        image = Image.open('/tmp/fullscreen.png')
-                        Path('/tmp/fullscreen.png').unlink(missing_ok=True)
-                        return image
+                    with tempfile.NamedTemporaryFile(suffix='.png') as tmp:
+                        cmd = ['import', '-window', 'root', tmp.name]
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            self.logger.debug("Screen captured successfully with ImageMagick.")
+                            return Image.open(tmp.name)
+                        else:
+                            self.logger.debug(f"ImageMagick 'import' failed: {result.stderr.strip()}")
+                except FileNotFoundError:
+                    self.logger.debug("ImageMagick 'import' command not found, trying next method.")
                 except Exception as e:
-                    self.logger.debug(f"scrot fullscreen failed: {e}")
-            
+                    self.logger.debug(f"ImageMagick capture failed: {e}")
+
+                # Method 2: scrot
+                try:
+                    tmp_dir = Path(tempfile.gettempdir())
+                    # Create a unique filename to avoid conflicts
+                    tmp_path = tmp_dir / f"screenshot_{os.getpid()}_{id(self)}.png"
+
+                    try:
+                        cmd = ['scrot', '--silent', str(tmp_path)]
+                        env = dict(os.environ)
+                        env.update({
+                            'DISPLAY': env.get('DISPLAY', ':0'),
+                            'GNOME_SCREENSHOT_DISABLE': '1',
+                            'NO_GNOME_SCREENSHOT': '1'
+                        })
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, env=env)
+
+                        if result.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
+                            self.logger.debug("Screen captured successfully with scrot.")
+                            image = Image.open(tmp_path)
+                            return image
+                        else:
+                            err_msg = result.stderr.strip() if result.stderr else "No stderr."
+                            filesize = tmp_path.stat().st_size if tmp_path.exists() else "File does not exist."
+                            self.logger.debug(f"scrot failed. Code: {result.returncode}, Error: {err_msg}, Filesize: {filesize}")
+                    finally:
+                        # Ensure the temporary file is always cleaned up
+                        if tmp_path.exists():
+                            tmp_path.unlink()
+                
+                except FileNotFoundError:
+                    self.logger.debug("scrot command not found.")
+                except Exception as e:
+                    self.logger.debug(f"scrot capture failed: {e}")
+                
+                self.logger.error("All Linux-native screen capture methods failed. PIL.ImageGrab will not be attempted.")
+                return None
+
+            # For Windows/macOS, prefer PIL ImageGrab
             if HAS_PIL:
                 try:
                     return ImageGrab.grab()
                 except Exception as e:
                     self.logger.debug(f"PIL fullscreen failed: {e}")
                     
-            elif HAS_PYAUTOGUI:
+            # Fallback to pyautogui on non-Linux platforms
+            if HAS_PYAUTOGUI and self.platform != "Linux" and pyautogui is not None:
                 try:
-                    screenshot = pyautogui.screenshot()
-                    return screenshot
+                    return pyautogui.screenshot()
                 except Exception as e:
                     self.logger.debug(f"pyautogui fullscreen failed: {e}")
-                    
-            elif HAS_PYSCREENSHOT and self.platform == "Linux":
-                try:
-                    # Force pyscreenshot to use a specific backend that doesn't conflict
-                    import pyscreenshot as ImageGrab_alt
-
-                    # Try to use PIL backend first to avoid gnome-screenshot
-                    return ImageGrab_alt.grab(backend='pil')
-                except Exception as e:
-                    self.logger.debug(f"pyscreenshot with PIL backend failed: {e}")
-                    try:
-                        # Fallback to imagemagick if available
-                        return ImageGrab_alt.grab(backend='imagemagick')
-                    except Exception as e2:
-                        self.logger.debug(f"pyscreenshot with imagemagick backend failed: {e2}")
-                    return ImageGrab_alt.grab()
-                except Exception as e:
-                    self.logger.debug(f"pyscreenshot fullscreen failed: {e}")
-            else:
-                self.logger.error("No screen capture method available")
-                return None
+            
+            self.logger.error("No screen capture method available for this platform.")
+            return None
                 
         except Exception as e:
-            self.logger.error(f"Error capturing screen: {e}")
+            self.logger.error(f"An unexpected error occurred during screen capture: {e}")
             return None
 
     def capture_region(self, x: int, y: int, width: int,
@@ -148,48 +188,50 @@ class ScreenCapture:
         try:
             bbox = (x, y, x + width, y + height)
             
-            # For Linux, prefer scrot due to snap conflicts with gnome-screenshot
+            # Linux-specific capture logic
             if self.platform == "Linux":
+                # Try direct region capture methods first
+                imagemagick_result = self._capture_with_imagemagick(x, y, width, height)
+                if imagemagick_result:
+                    return imagemagick_result
+                
                 scrot_result = self._capture_with_scrot(x, y, width, height)
                 if scrot_result:
                     return scrot_result
-            
-            # Try other capture methods as backup
+                
+                # Fallback for Linux: capture full screen and crop
+                self.logger.debug("Linux-native region capture failed. Attempting to crop a full screenshot.")
+                full_screen = self.capture_screen()
+                if full_screen:
+                    return full_screen.crop(bbox)
+                
+                self.logger.error("All region capture methods for Linux failed.")
+                return None
+
+            # For Windows/macOS, prefer PIL ImageGrab for region capture
             if HAS_PIL:
                 try:
                     return ImageGrab.grab(bbox=bbox)
                 except Exception as e:
                     self.logger.debug(f"PIL capture failed: {e}")
             
-            if HAS_PYAUTOGUI:
+            # Fallback to pyautogui on non-Linux platforms
+            if HAS_PYAUTOGUI and self.platform != "Linux" and pyautogui is not None:
                 try:
                     return pyautogui.screenshot(region=(x, y, width, height))
                 except Exception as e:
-                    self.logger.debug(
-                        f"pyautogui capture failed: {e}")
+                    self.logger.debug(f"pyautogui capture failed: {e}")
             
-            if HAS_PYSCREENSHOT and self.platform == "Linux":
-                try:
-                    # Force pyscreenshot to avoid gnome-screenshot backend
-                    import pyscreenshot as ImageGrab_alt
-                    return ImageGrab_alt.grab(bbox=bbox, backend='pil')
-                except Exception as e:
-                    self.logger.debug(f"pyscreenshot region capture failed: {e}")
-                    try:
-                        return ImageGrab_alt.grab(bbox=bbox, backend='imagemagick')
-                    except Exception as e2:
-                        self.logger.debug(f"pyscreenshot imagemagick failed: {e2}")
-                except Exception as e:
-                    self.logger.debug(f"pyscreenshot failed: {e}")
-            
-            # Last resort: capture full screen and crop
+            # Last resort for non-Linux: capture full screen and crop
+            self.logger.debug("Trying to capture full screen and crop as a last resort.")
             full_screen = self.capture_screen()
             if full_screen:
                 return full_screen.crop(bbox)
+            
             return None
                 
         except Exception as e:
-            self.logger.error(f"Error capturing region {bbox}: {e}")
+            self.logger.error(f"An unexpected error occurred during region capture {bbox}: {e}")
             return None
     
     def _capture_with_scrot(self, x: int, y: int, width: int,
@@ -198,12 +240,25 @@ class ScreenCapture:
         try:
             with tempfile.NamedTemporaryFile(suffix='.png',
                                              delete=False) as tmp:
+                # Use scrot with specific options to avoid triggering GNOME services
                 cmd = [
                     'scrot',
                     '-a', f'{x},{y},{width},{height}',
+                    '--overwrite',  # Prevent any dialog prompts
+                    '--silent',     # Suppress any output that might trigger GNOME
                     tmp.name
                 ]
-                result = subprocess.run(cmd, capture_output=True, timeout=10)
+                
+                # Set environment to prevent any GNOME integration
+                env = dict(os.environ)
+                env.update({
+                    'DISPLAY': env.get('DISPLAY', ':0'),
+                    'GNOME_SCREENSHOT_DISABLE': '1',
+                    'NO_GNOME_SCREENSHOT': '1'
+                })
+                
+                result = subprocess.run(cmd, capture_output=True, timeout=10,
+                                      env=env)
                 
                 if result.returncode == 0:
                     image = Image.open(tmp.name)
@@ -211,12 +266,49 @@ class ScreenCapture:
                     Path(tmp.name).unlink(missing_ok=True)
                     return image
                 else:
-                    self.logger.debug(f"scrot failed: {result.stderr}")
+                    self.logger.debug(f"scrot failed with code {result.returncode}, stderr: {result.stderr.decode()}")
                     Path(tmp.name).unlink(missing_ok=True)
                     return None
                     
         except Exception as e:
             self.logger.debug(f"scrot capture error: {e}")
+            return None
+    
+    def _capture_with_imagemagick(self, x: int, y: int, width: int,
+                                  height: int) -> Optional[Image.Image]:
+        """Use ImageMagick import to capture a region (avoids gnome-screenshot issues)."""
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                # Use ImageMagick import command with crop geometry
+                cmd = [
+                    'import',
+                    '-window', 'root',
+                    '-crop', f'{width}x{height}+{x}+{y}',
+                    tmp.name
+                ]
+                
+                # Set environment to prevent any GNOME integration
+                env = dict(os.environ)
+                env.update({
+                    'DISPLAY': env.get('DISPLAY', ':0'),
+                    'GNOME_SCREENSHOT_DISABLE': '1',
+                    'NO_GNOME_SCREENSHOT': '1'
+                })
+                
+                result = subprocess.run(cmd, capture_output=True, timeout=10,
+                                      env=env)
+                
+                if result.returncode == 0:
+                    image = Image.open(tmp.name)
+                    Path(tmp.name).unlink(missing_ok=True)
+                    return image
+                else:
+                    self.logger.debug(f"ImageMagick import failed with code {result.returncode}, stderr: {result.stderr.decode()}")
+                    Path(tmp.name).unlink(missing_ok=True)
+                    return None
+                    
+        except Exception as e:
+            self.logger.debug(f"ImageMagick capture error: {e}")
             return None
 
     def capture_window(self, window_id: int, x: int, y: int, width: int,
@@ -248,19 +340,108 @@ class ScreenCapture:
             True if saved successfully, False otherwise
         """
         try:
-            # Ensure the directory exists
-            Path(filepath).parent.mkdir(parents=True, exist_ok=True)
             image.save(filepath)
-            self.logger.debug(f"Image saved to {filepath}")
+            self.logger.debug(f"Saved screenshot to {filepath}")
             return True
         except Exception as e:
             self.logger.error(f"Error saving image to {filepath}: {e}")
             return False
-
-    def image_to_bytes(
-        self, image: Image.Image, format: str = 'PNG'
-    ) -> Optional[bytes]:
-        """Convert a PIL Image to bytes.
+    
+    def image_to_numpy(self, image: Image.Image) -> Optional[np.ndarray]:
+        """Convert PIL Image to numpy array for OpenCV processing.
+        
+        Args:
+            image: PIL Image object
+            
+        Returns:
+            Numpy array or None if conversion failed
+        """
+        if not HAS_OPENCV:
+            self.logger.warning("OpenCV not available for image conversion")
+            return None
+        
+        try:
+            # Convert PIL to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Convert to numpy array and change from RGB to BGR for OpenCV
+            numpy_image = np.array(image)
+            opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
+            return opencv_image
+            
+        except Exception as e:
+            self.logger.error(f"Error converting image to numpy: {e}")
+            return None
+    
+    def numpy_to_image(self, numpy_array: np.ndarray) -> Optional[Image.Image]:
+        """Convert numpy array to PIL Image.
+        
+        Args:
+            numpy_array: OpenCV/numpy image array
+            
+        Returns:
+            PIL Image object or None if conversion failed
+        """
+        if not HAS_PIL:
+            self.logger.warning("PIL not available for image conversion")
+            return None
+        
+        try:
+            # Convert from BGR to RGB
+            if len(numpy_array.shape) == 3:
+                rgb_array = cv2.cvtColor(numpy_array, cv2.COLOR_BGR2RGB)
+            else:
+                rgb_array = numpy_array
+            
+            return Image.fromarray(rgb_array)
+            
+        except Exception as e:
+            self.logger.error(f"Error converting numpy to image: {e}")
+            return None
+    
+    def get_screen_size(self) -> Tuple[int, int]:
+        """Get the screen size.
+        
+        Returns:
+            Tuple of (width, height)
+        """
+        try:
+            # On Linux, use xrandr to avoid pyautogui/gnome-screenshot conflicts
+            if self.platform == "Linux":
+                try:
+                    result = subprocess.run(['xrandr'], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        for line in result.stdout.split('\n'):
+                            if ' connected primary ' in line or ' connected ' in line:
+                                # Parse resolution like "1920x1080+0+0"
+                                parts = line.split()
+                                for part in parts:
+                                    if 'x' in part and '+' in part:
+                                        resolution = part.split('+')[0]
+                                        width, height = map(int, resolution.split('x'))
+                                        return (width, height)
+                except Exception as e:
+                    self.logger.debug(f"xrandr failed: {e}")
+            
+            # Fallback: try pyautogui if available (Windows/macOS)
+            if HAS_PYAUTOGUI and self.platform != "Linux" and pyautogui is not None:
+                return pyautogui.size()
+            elif HAS_PIL:
+                # Capture screen and get size
+                screen = self.capture_screen()
+                if screen:
+                    return screen.size
+            
+            # Fallback default
+            return (1920, 1080)
+            
+        except Exception as e:
+            self.logger.error(f"Error getting screen size: {e}")
+            return (1920, 1080)
+    
+    def image_to_bytes(self, image: Image.Image, format: str = 'PNG') -> Optional[bytes]:
+        """Convert PIL Image to bytes.
         
         Args:
             image: PIL Image object

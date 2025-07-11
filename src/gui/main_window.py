@@ -6,10 +6,17 @@ Modern GUI interface for the automation tool with dark theme,
 tabbed interface, real-time monitoring, and configuration management.
 """
 
-import argparse
+# Apply gnome-screenshot prevention before PyQt6 imports
 import sys
-import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.gnome_screenshot_fix import setup_screenshot_environment
+
+setup_screenshot_environment()
+
+import argparse
+import time
 from typing import Dict, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -38,11 +45,10 @@ from PyQt6.QtWidgets import (
 )
 
 # Import core modules
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-from src.core.automation_engine import AutomationEngine
-from src.core.config_manager import ConfigManager
-from src.utils.logger import setup_logging
+sys.path.append(str(Path(__file__).parent.parent))
+from core.automation_engine import AutomationEngine
+from core.config_manager import ConfigManager
+from utils.logger import setup_logging
 
 
 class AutomationWorker(QThread):
@@ -82,48 +88,77 @@ class AutomationWorker(QThread):
             
     def _run_real_automation(self):
         """Run real automation with actual button detection and clicking."""
+        import asyncio
+
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Run the automation engine
+            loop.run_until_complete(self._automation_loop())
+        finally:
+            loop.close()
+    
+    async def _automation_loop(self):
+        """Main automation loop running in async context."""
+        import asyncio
+        
         cycle_count = 0
         self._last_click_count = 0
         
-        while self.running:
+        # Start the automation engine
+        if self.automation_engine:
+            # Don't call start() as it would create a conflicting loop
+            # Instead, run the automation manually
+            self.automation_engine.running = True
+            self.automation_engine.stats['start_time'] = int(time.time())
+        
+        while self.running and self.automation_engine:
             try:
                 cycle_count += 1
                 self.status_update.emit(f"Running cycle {cycle_count}...")
                 
-                # Get real stats from automation engine
-                if self.automation_engine:
-                    report = self.automation_engine.get_performance_report()
-                    engine_stats = report['statistics']
-                    
-                    # Enhanced stats for GUI display
-                    gui_stats = {
-                        'cycles': cycle_count,
-                        'windows_found': engine_stats.get('windows_processed', 0),
-                        'buttons_clicked': engine_stats.get('clicks_successful', 0),
-                        'buttons_attempted': engine_stats.get('clicks_attempted', 0),
-                        'success_rate': report.get('success_rate', 0) * 100,
-                        'errors': engine_stats.get('errors', 0),
-                        'runtime': report.get('runtime_seconds', 0)
-                    }
-                    
-                    self.stats_update.emit(gui_stats)
-                    
-                    # Log new button clicks
-                    clicks = engine_stats.get('clicks_successful', 0)
-                    if clicks > self._last_click_count:
-                        new_clicks = clicks - self._last_click_count
-                        self.log_message.emit("SUCCESS", 
-                            f"Clicked {new_clicks} Continue button(s)! "
-                            f"Total: {clicks}")
-                        self._last_click_count = clicks
+                # Run one automation cycle
+                await self.automation_engine._process_vscode_windows()
                 
+                # Get current window count (not cumulative)
+                current_windows = self.automation_engine.window_detector.get_vscode_windows()
+                current_window_count = len(current_windows)
+                
+                # Get real stats from automation engine
+                report = self.automation_engine.get_performance_report()
+                engine_stats = report['statistics']
+                
+                # Enhanced stats for GUI display
+                gui_stats = {
+                    'cycles': cycle_count,
+                    'windows_found': current_window_count,  # Use current count, not cumulative
+                    'buttons_clicked': engine_stats.get('clicks_successful', 0),
+                    'buttons_attempted': engine_stats.get('clicks_attempted', 0),
+                    'success_rate': report.get('success_rate', 0) * 100,
+                    'errors': engine_stats.get('errors', 0),
+                    'runtime': report.get('runtime_seconds', 0)
+                }
+                
+                self.stats_update.emit(gui_stats)
+                
+                # Log new button clicks
+                clicks = engine_stats.get('clicks_successful', 0)
+                if clicks > self._last_click_count:
+                    new_clicks = clicks - self._last_click_count
+                    self.log_message.emit("SUCCESS", 
+                        f"Clicked {new_clicks} Continue button(s)! "
+                        f"Total: {clicks}")
+                    self._last_click_count = clicks
+            
                 # Sleep between cycles
                 interval = self.config_manager.get('automation.interval_seconds', 2.0)
-                time.sleep(interval)
+                await asyncio.sleep(interval)
                 
             except Exception as e:
                 self.log_message.emit("ERROR", f"Cycle error: {e}")
-                time.sleep(5)  # Wait before retrying
+                await asyncio.sleep(5)  # Wait before retrying
     
     def _calculate_success_rate(self, stats: Dict) -> float:
         """Calculate success rate from engine stats."""
@@ -480,10 +515,6 @@ class LogWidget(QWidget):
         """Clear all log messages."""
         self.log_text.clear()
     
-    def get_all_logs(self):
-        """Get all log content as plain text."""
-        return self.log_text.toPlainText()
-    
     def export_logs(self):
         """Export logs to file."""
         file_path, _ = QFileDialog.getSaveFileName(
@@ -516,9 +547,6 @@ class MainWindow(QMainWindow):
         """Initialize the user interface."""
         self.setWindowTitle("VS Code Chat Continue Automation")
         self.setGeometry(100, 100, 1000, 700)
-        
-        # Setup menu bar
-        self.setup_menu_bar()
         
         # Apply dark theme
         self.apply_dark_theme()
@@ -595,71 +623,6 @@ class MainWindow(QMainWindow):
         emergency_btn.setMinimumHeight(30)
         layout.addWidget(emergency_btn)
     
-    def setup_menu_bar(self):
-        """Setup the application menu bar."""
-        menubar = self.menuBar()
-        
-        # File menu
-        file_menu = menubar.addMenu('&File')
-        
-        # Load config action
-        load_action = file_menu.addAction('&Load Configuration...')
-        load_action.setShortcut('Ctrl+O')
-        load_action.triggered.connect(self.config_tab.load_config_file)
-        
-        # Save config action
-        save_action = file_menu.addAction('&Save Configuration...')
-        save_action.setShortcut('Ctrl+S')
-        save_action.triggered.connect(self.config_tab.save_config_file)
-        
-        file_menu.addSeparator()
-        
-        # Export logs action
-        export_logs_action = file_menu.addAction('&Export Logs...')
-        export_logs_action.triggered.connect(self.log_tab.export_logs)
-        
-        file_menu.addSeparator()
-        
-        # Exit action
-        exit_action = file_menu.addAction('E&xit')
-        exit_action.setShortcut('Ctrl+Q')
-        exit_action.triggered.connect(self.close)
-        
-        # View menu
-        view_menu = menubar.addMenu('&View')
-        
-        # Refresh action
-        refresh_action = view_menu.addAction('&Refresh Windows')
-        refresh_action.setShortcut('F5')
-        refresh_action.triggered.connect(self.refresh_window_detection)
-        
-        # Clear logs action
-        clear_logs_action = view_menu.addAction('&Clear Logs')
-        clear_logs_action.setShortcut('Ctrl+L')
-        clear_logs_action.triggered.connect(self.log_tab.clear_logs)
-        
-        # Tools menu
-        tools_menu = menubar.addMenu('&Tools')
-        
-        # Run diagnostics action
-        diagnostics_action = tools_menu.addAction('&Run Diagnostics')
-        diagnostics_action.triggered.connect(self.run_diagnostics)
-        
-        # Test window detection action
-        test_windows_action = tools_menu.addAction('&Test Window Detection')
-        test_windows_action.triggered.connect(self.test_window_detection)
-        
-        # Help menu
-        help_menu = menubar.addMenu('&Help')
-        
-        # About action
-        about_action = help_menu.addAction('&About')
-        about_action.triggered.connect(self.show_about)
-        
-        # Documentation action
-        docs_action = help_menu.addAction('&Documentation')
-        docs_action.triggered.connect(self.show_documentation)
-
     def create_control_tab(self) -> QWidget:
         """Create the main control tab."""
         widget = QWidget()
@@ -806,19 +769,29 @@ class MainWindow(QMainWindow):
         """Start the automation process."""
         if self.automation_worker and self.automation_worker.isRunning():
             return
-        
+            
         self.log_tab.add_log_message("INFO", "Starting automation...")
         
-        # Apply quick settings
-        self.config_manager.set('automation.detection_interval', self.quick_interval.value())
-        self.config_manager.set('automation.dry_run', self.quick_dry_run.isChecked())
-        self.config_manager.set('demo_mode', self.quick_demo_mode.isChecked())
+        # Apply quick settings to config
+        self.config_manager.set(
+            'automation.detection_interval', self.quick_interval.value()
+        )
+        self.config_manager.set(
+            'automation.dry_run', self.quick_dry_run.isChecked()
+        )
+        self.config_manager.set(
+            'demo_mode', self.quick_demo_mode.isChecked()
+        )
         
-        # Create and start worker
+        # Start worker thread
         self.automation_worker = AutomationWorker(self.config_manager)
         self.automation_worker.status_update.connect(self.update_status)
-        self.automation_worker.stats_update.connect(self.stats_tab.update_stats)
-        self.automation_worker.log_message.connect(self.log_tab.add_log_message)
+        self.automation_worker.stats_update.connect(
+            self.stats_tab.update_stats
+        )
+        self.automation_worker.log_message.connect(
+            self.log_tab.add_log_message
+        )
         
         self.automation_worker.start()
         
@@ -826,16 +799,16 @@ class MainWindow(QMainWindow):
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.status_progress.setVisible(True)
+        self.status_progress.setRange(0, 0)  # Indeterminate progress
         
     def stop_automation(self):
         """Stop the automation process."""
         if self.automation_worker:
+            self.log_tab.add_log_message("INFO", "Stopping automation...")
             self.automation_worker.stop()
-            self.automation_worker.wait()
+            self.automation_worker.wait()  # Wait for thread to finish
             
-        self.log_tab.add_log_message("INFO", "Automation stopped")
-        
-        # Update UI
+        self.update_status("Stopped")
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.status_progress.setVisible(False)
@@ -880,138 +853,88 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.accept()
-    
-    def run_diagnostics(self):
-        """Run comprehensive diagnostics."""
-        self.log_tab.add_log_message("INFO", "Running diagnostics...")
-        try:
-            # Import and run diagnostic script
-            import os
-            import subprocess
-            project_root = Path(__file__).parent.parent.parent
-            script_path = project_root / "tests" / "diagnostic_deep.py"
-            
-            if script_path.exists():
-                env = os.environ.copy()
-                env['DISPLAY'] = os.environ.get('DISPLAY', ':0')
-                result = subprocess.run([sys.executable, str(script_path)], 
-                                      capture_output=True, text=True, env=env)
-                
-                self.log_tab.add_log_message("INFO", "Diagnostic output:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        self.log_tab.add_log_message("DEBUG", f"  {line}")
-                
-                if result.stderr:
-                    for line in result.stderr.split('\n'):
-                        if line.strip():
-                            self.log_tab.add_log_message("ERROR", f"  {line}")
-                            
-                QMessageBox.information(self, "Diagnostics", 
-                    "Diagnostics completed. Check logs for details.")
-            else:
-                msg = f"Diagnostic script not found: {script_path}"
-                self.log_tab.add_log_message("ERROR", msg)
-                QMessageBox.critical(self, "Error", 
-                    f"Diagnostic script not found:\n{script_path}")
-                
-        except Exception as e:
-            self.log_tab.add_log_message("ERROR", f"Failed to run diagnostics: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to run diagnostics:\n{e}")
-    
-    def test_window_detection(self):
-        """Test window detection specifically."""
-        self.log_tab.add_log_message("INFO", "Testing window detection...")
-        try:
-            import os
-            import subprocess
-            project_root = Path(__file__).parent.parent.parent
-            script_path = project_root / "tests" / "debug_window_simple.py"
-            
-            if script_path.exists():
-                env = os.environ.copy()
-                env['DISPLAY'] = os.environ.get('DISPLAY', ':0')
-                result = subprocess.run([sys.executable, str(script_path)], 
-                                      capture_output=True, text=True, env=env)
-                
-                self.log_tab.add_log_message("INFO", "Window detection test output:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        self.log_tab.add_log_message("DEBUG", f"  {line}")
-                        
-                if result.stderr:
-                    for line in result.stderr.split('\n'):
-                        if line.strip():
-                            self.log_tab.add_log_message("ERROR", f"  {line}")
-                            
-                QMessageBox.information(self, "Window Detection Test", 
-                    "Test completed. Check logs for details.")
-            else:
-                msg = f"Test script not found: {script_path}"
-                self.log_tab.add_log_message("ERROR", msg)
-                QMessageBox.critical(self, "Error", 
-                    f"Test script not found:\n{script_path}")
-                
-        except Exception as e:
-            msg = f"Failed to test window detection: {e}"
-            self.log_tab.add_log_message("ERROR", msg)
-            QMessageBox.critical(self, "Error", f"Failed to test window detection:\n{e}")
-    
-    def refresh_window_detection(self):
-        """Refresh window detection manually."""
-        self.log_tab.add_log_message("INFO", "Refreshing window detection...")
-        try:
-            # Import and use window detector
-            from src.core.window_detector import WindowDetector
-            detector = WindowDetector()
-            windows = detector.get_vscode_windows()
-            count = len(windows)
-            self.log_tab.add_log_message("SUCCESS", f"Found {count} VS Code windows")
-            
-            # Update statistics display
-            stats = {'windows_found': count}
-            self.stats_tab.update_stats(stats)
-            
-            QMessageBox.information(self, "Window Detection", 
-                f"Found {count} VS Code windows")
-        except Exception as e:
-            self.log_tab.add_log_message("ERROR", f"Window detection failed: {e}")
-            QMessageBox.critical(self, "Error", f"Window detection failed:\n{e}")
-    
-    def show_about(self):
-        """Show about dialog."""
-        QMessageBox.about(self, "About", 
-            "VS Code Chat Continue Automation\n\n"
-            "Version 1.0.0\n\n"
-            "An automation tool for clicking the Continue button in VS Code Chat.\n\n"
-            "Built with PyQt6 and Python")
 
-    def show_documentation(self):
-        """Show documentation."""
-        docs_text = """
-        VS Code Chat Continue Automation - Quick Guide
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create command line argument parser for GUI."""
+    parser = argparse.ArgumentParser(
+        description="VS Code Chat Continue Automation - GUI Interface",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument(
+        '--config', '-c',
+        type=Path,
+        help='Path to configuration file'
+    )
+    
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Start in dry-run mode'
+    )
+    
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug logging'
+    )
+    
+    return parser
+
+
+def main():
+    """Main entry point for GUI application."""
+    try:
+        print("GUI: Starting main function...")
         
-        1. Configuration:
-           - Use the Configuration tab to set up automation parameters
-           - Load/save configurations using the File menu
+        # Parse arguments
+        parser = create_parser()
+        args = parser.parse_args()
+        print("GUI: Arguments parsed")
         
-        2. Window Detection:
-           - The tool automatically detects VS Code windows
-           - Use Tools > Test Window Detection to verify detection
+        # Test display
+        import os
+        print(f"GUI: DISPLAY = {os.environ.get('DISPLAY', 'Not set')}")
+        # Create application with clean argv to avoid conflicts
+        print("GUI: Creating QApplication...")
+        # Check if QApplication already exists
         
-        3. Automation:
-           - Click Start Automation to begin automated clicking
-           - Use Demo Mode for testing without actual clicks
-           - Emergency Stop button for immediate halt
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication(['gui-app'])
+            app.setApplicationName("VS Code Chat Continue Automation")
+            app.setApplicationVersion("1.0.0")
+            print("GUI: QApplication created")
+        else:
+            print("GUI: Using existing QApplication instance")
         
-        4. Monitoring:
-           - Statistics tab shows real-time performance
-           - Logs tab displays detailed operation logs
+        # Create and show main window
+        print("GUI: Creating MainWindow...")
+        window = MainWindow(args.config)
+        print("GUI: MainWindow created")
         
-        5. Troubleshooting:
-           - Use Tools > Run Diagnostics for system checks
-           - Check logs for error messages
-           - Ensure DISPLAY environment variable is set
-        """
+        # Apply command line overrides
+        if args.dry_run:
+            window.config_manager.set('automation.dry_run', True)
+            window.quick_dry_run.setChecked(True)
+            
+        if args.debug:
+            window.config_manager.set('logging.level', 'DEBUG')
         
-        QMessageBox.information(self, "Documentation", docs_text)
+        print("GUI: Showing window...")
+        window.show()
+        print("GUI: Window shown, starting event loop...")
+        
+        # Run application (don't use sys.exit to allow graceful return)
+        return app.exec()
+        
+    except Exception as e:
+        print(f"GUI: Error in main: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

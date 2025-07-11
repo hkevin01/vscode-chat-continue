@@ -36,7 +36,7 @@ class AutomationLogger:
         logger.handlers.clear()
         
         # File handler with rotation
-        log_path_str = self.config.get("file_path", "logs/automation.log")
+        log_path_str = self.config.get("file_path", "automation.log")
         log_path = Path(log_path_str).expanduser()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         

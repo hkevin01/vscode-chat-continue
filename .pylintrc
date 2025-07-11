@@ -1,0 +1,54 @@
+[MASTER]
+# Add files or directories to the blacklist
+ignore=venv,.git,__pycache__,.pytest_cache
+
+[MESSAGES CONTROL]
+# Disable the message, report, category or checker with the given id(s)
+disable=line-too-long,
+        import-error,
+        unused-import,
+        redefined-outer-name,
+        broad-except,
+        bare-except,
+        too-many-locals,
+        too-many-statements,
+        too-many-branches,
+        missing-docstring,
+        invalid-name,
+        unused-variable,
+        global-statement,
+        consider-using-f-string,
+        trailing-whitespace,
+        multiple-imports,
+        wrong-import-position,
+        import-outside-toplevel,
+        unused-argument,
+        redefined-builtin,
+        too-many-arguments,
+        too-many-instance-attributes,
+        attribute-defined-outside-init,
+        no-member
+
+[FORMAT]
+# Maximum number of characters on a single line
+max-line-length=120
+
+[BASIC]
+# Good variable names which should always be accepted
+good-names=i,j,k,ex,Run,_,x,y,w,h,e,f,app
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=10
+
+# Maximum number of locals for function / method body
+max-locals=20
+
+# Maximum number of return / yield for function / method body
+max-returns=8
+
+# Maximum number of branch for function / method body
+max-branches=15
+
+# Maximum number of statements in function / method body
+max-statements=60

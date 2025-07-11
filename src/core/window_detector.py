@@ -61,30 +61,15 @@ class WindowDetector:
         self.platform = platform.system()
         
         # Initialize platform-specific components
-        self.display = None
-        self.ewmh = None
-        
         if self.platform == "Linux" and HAS_X11:
-            import os
-
-            # Check if we have a valid DISPLAY
-            display_env = os.environ.get('DISPLAY')
-            if not display_env:
-                self.logger.warning(
-                    "No DISPLAY environment variable set - "
-                    "X11 window detection unavailable"
-                )
-                return
-            
             try:
                 self.display = Xlib.display.Display()
                 self.ewmh = EWMH()
-                self.logger.debug("X11 components initialized successfully")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize X11: {e}")
                 self.display = None
                 self.ewmh = None
-    
+        
     def get_vscode_processes(self) -> List[psutil.Process]:
         """Get all running VS Code processes.
         
@@ -168,112 +153,131 @@ class WindowDetector:
         windows = []
         try:
             vscode_pids = {proc.pid for proc in self.get_vscode_processes()}
-            self.logger.debug(f"VS Code PIDs to look for: {vscode_pids}")
         except Exception as e:
             self.logger.error(f"Failed to get VS Code processes: {e}")
             return []
         
+        # Add emergency fallback to prevent hanging
         try:
-            # Simplified approach - get all windows without complex timeouts
-            all_windows = self.ewmh.getClientList()
-            if not all_windows:
-                self.logger.debug("No windows found via X11")
-                return windows
+            # Quick test to see if X11 is responsive
+            import signal
             
-            self.logger.debug(f"Found {len(all_windows)} total windows via X11")
+            def timeout_handler(signum, frame):
+                raise TimeoutError("X11 operation timed out")
             
-            for window in all_windows:
-                try:
-                    # Skip if window is None or invalid
-                    if not window:
-                        continue
-                        
-                    # Get window properties with error handling
-                    title = ""
+            # Set a shorter 2-second timeout for initial X11 test
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(2)
+            
+            try:
+                # Test X11 responsiveness first with a simple call
+                self.display.sync()
+                signal.alarm(0)  # Cancel timeout if successful
+                
+                # Now try to get windows with a longer timeout
+                signal.alarm(5)
+                all_windows = self.ewmh.getClientList()
+                signal.alarm(0)  # Cancel timeout
+                
+                if not all_windows:
+                    self.logger.debug("No windows found via X11")
+                    return windows
+                
+                self.logger.debug(f"Found {len(all_windows)} total windows via X11")
+                
+                for window in all_windows:
                     try:
+                        # Skip if window is None or invalid
+                        if not window or not hasattr(window, 'get_geometry'):
+                            continue
+                            
+                        # Get window properties
                         title_raw = self.ewmh.getWmName(window)
                         if title_raw:
+                            # Handle both bytes and string returns
                             if isinstance(title_raw, bytes):
-                                title = title_raw.decode('utf-8', errors='ignore')
+                                title = title_raw.decode(
+                                    'utf-8', errors='ignore')
                             else:
                                 title = str(title_raw)
-                    except Exception as e:
-                        self.logger.debug(f"Could not get window title: {e}")
-                        continue
-                    
-                    # Get window PID
-                    window_pid = None
-                    try:
+                        else:
+                            title = ""
+                        
                         window_pid = self.ewmh.getWmPid(window)
-                    except Exception as e:
-                        self.logger.debug(f"Could not get window PID: {e}")
-                        continue
-                    
-                    # Debug: Log all windows to see what we're getting
-                    self.logger.debug(f"Window: PID={window_pid}, Title='{title}'")
-                    
-                    # Check if this is a VS Code window
-                    is_vscode_pid = window_pid in vscode_pids if window_pid else False
-                    is_vscode_title = self._is_vscode_window(title)
-                    
-                    self.logger.debug(f"  VS Code PID match: {is_vscode_pid}")
-                    self.logger.debug(f"  VS Code title match: {is_vscode_title}")
-                    
-                    if is_vscode_pid and is_vscode_title:
-                        try:
-                            # Get window geometry
-                            geometry = window.get_geometry()
-                            
-                            # Get absolute coordinates
-                            abs_x, abs_y = geometry.x, geometry.y
+                        
+                        # Check if this is a VS Code window
+                        if (window_pid in vscode_pids and
+                                self._is_vscode_window(title)):
                             try:
-                                root = self.display.screen().root
-                                translated = window.translate_coords(root, 0, 0)
-                                if (translated.x >= 0 and translated.y >= 0 and 
-                                    translated.x < 10000 and translated.y < 10000):
-                                    abs_x, abs_y = translated.x, translated.y
-                                else:
-                                    self.logger.debug(f"Using geometry coords instead of translated: ({translated.x}, {translated.y})")
-                            except Exception:
-                                pass  # Use geometry coordinates
+                                geometry = window.get_geometry()
+                                # Start with geometry coordinates
+                                abs_x, abs_y = geometry.x, geometry.y
                                 
+                                # Try to get absolute coordinates by translating
+                                try:
+                                    root = self.display.screen().root
+                                    translated = window.translate_coords(root, 0, 0)
+                                    
+                                    # Only use translated coordinates if they seem reasonable
+                                    if (translated.x >= 0 and translated.y >= 0 and 
+                                        translated.x < 10000 and translated.y < 10000):
+                                        abs_x, abs_y = translated.x, translated.y
+                                    else:
+                                        self.logger.debug(f"Translated coords seem invalid: ({translated.x}, {translated.y}), using geometry")
+                                        
+                                except Exception as translate_error:
+                                    self.logger.debug(f"Translation failed: {translate_error}, using geometry coords")
+                                    # Keep using geometry coordinates
+                                    
+                            except Exception as geom_error:
+                                self.logger.debug(
+                                    f"Could not get geometry for "
+                                    f"window {window}: {geom_error}")
+                                continue
+                            
                             # Check if window is focused
-                            is_focused = False
-                            try:
-                                active_window = self.ewmh.getActiveWindow()
-                                is_focused = active_window == window
-                            except Exception:
-                                pass  # Default to not focused
+                            active_window = self.ewmh.getActiveWindow()
+                            is_focused = active_window == window
                             
                             # Create VSCodeWindow object
-                            vscode_window = VSCodeWindow(
-                                window_id=getattr(window, 'id', 0),
-                                title=title,
-                                pid=window_pid,
-                                x=abs_x,
-                                y=abs_y,
-                                width=geometry.width,
-                                height=geometry.height,
-                                is_focused=is_focused
-                            )
+                            try:
+                                vscode_window = VSCodeWindow(
+                                    window_id=getattr(window, 'id', 0),
+                                    title=title,
+                                    pid=window_pid,
+                                    x=abs_x,
+                                    y=abs_y,
+                                    width=geometry.width,
+                                    height=geometry.height,
+                                    is_focused=is_focused
+                                )
+                                
+                                windows.append(vscode_window)
+                                self.logger.debug(
+                                    f"Found VS Code window: "
+                                    f"{title[:30]}... at "
+                                    f"({geometry.x},{geometry.y})")
+                            except Exception as create_error:
+                                self.logger.debug(
+                                    f"Could not create window object "
+                                    f"for {title}: {create_error}")
+                                continue
                             
-                            windows.append(vscode_window)
-                            self.logger.info(f"Found VS Code window: {title[:50]}... at ({abs_x},{abs_y})")
-                            
-                        except Exception as e:
-                            self.logger.debug(f"Could not process window geometry: {e}")
-                            continue
+                    except Exception as e:
+                        self.logger.debug(
+                            f"Error processing window {window}: {e}")
+                        continue
                         
-                except Exception as e:
-                    self.logger.debug(f"Error processing window: {e}")
-                    continue
-                    
+            except TimeoutError:
+                signal.alarm(0)  # Cancel timeout
+                self.logger.warning(
+                    "X11 operation timed out, skipping window detection")
+                return []
+                
         except Exception as e:
             self.logger.error(f"Error getting Linux windows: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
         
-        self.logger.info(f"Found {len(windows)} VS Code windows on Linux")
+        self.logger.debug(f"Found {len(windows)} VS Code windows on Linux")
         return windows
     
     def _get_windows_windows(self) -> List[VSCodeWindow]:

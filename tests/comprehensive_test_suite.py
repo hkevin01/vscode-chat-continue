@@ -1,321 +1,536 @@
 """Comprehensive test suite for VS Code Chat Continue automation."""
 
-import asyncio
-import logging
-import sys
+import json
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, Mock, patch
 
-import psutil
-from PIL import Image
-
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import cv2
+import numpy as np
+import pytest
 
 from src.core.automation_engine import AutomationEngine
-from src.core.button_finder import ButtonFinder, ButtonLocation
+from src.core.button_finder import ButtonFinder
 from src.core.click_automator import ClickAutomator
+
+# Import modules to test
 from src.core.config_manager import ConfigManager
 from src.core.window_detector import WindowDetector
+from src.utils.logger import AutomationLogger
+from src.utils.screen_capture import ScreenCapture
 
 
 class TestPhase1Foundation(unittest.TestCase):
     """Test Phase 1: Foundation components."""
-
+    
     def setUp(self):
         """Set up test environment."""
-        self.config = ConfigManager()
         self.test_config = {
             "automation": {"interval_seconds": 1.0, "dry_run": True},
             "detection": {"confidence_threshold": 0.8},
             "safety": {"require_confirmation": False},
-            "logging": {"level": "DEBUG", "console_output": False},
+            "logging": {"level": "DEBUG", "console_output": False}
         }
-
+    
     def test_project_setup_and_structure(self):
         """Test project setup and structure."""
-        project_root = Path(__file__).resolve().parent.parent
         # Verify essential directories exist
         essential_dirs = [
-            project_root / "src/core",
-            project_root / "src/utils",
-            project_root / "tests/unit",
-            project_root / "docs",
-            project_root / "config",
-            project_root / "scripts",
+            "src/core",
+            "src/utils", 
+            "tests/unit",
+            "docs",
+            "config",
+            "scripts"
         ]
-
+        
         for dir_path in essential_dirs:
-            self.assertTrue(
-                dir_path.exists(), f"Directory {dir_path} should exist"
-            )
-
+            self.assertTrue(Path(dir_path).exists(), 
+                          f"Directory {dir_path} should exist")
+        
         # Verify essential files exist
         essential_files = [
-            project_root / "src/main.py",
-            project_root / "src/core/config_manager.py",
-            project_root / "src/core/window_detector.py",
-            project_root / "src/core/automation_engine.py",
-            project_root / "requirements.txt",
+            "src/main.py",
+            "src/core/config_manager.py",
+            "src/core/window_detector.py", 
+            "src/core/automation_engine.py",
+            "requirements.txt"
         ]
-
+        
         for file_path in essential_files:
-            self.assertTrue(
-                file_path.exists(), f"File {file_path} should exist"
-            )
-
-    def test_config_manager_set_get(self):
-        """Test setting and getting configuration values."""
-        self.config.set('test.value', 123)
-        self.assertEqual(self.config.get('test.value'), 123)
-        self.config.set('test.nested.value', 'abc')
-        self.assertEqual(self.config.get('test.nested.value'), 'abc')
-        self.assertIsNone(self.config.get('non.existent.key'))
-
+            self.assertTrue(Path(file_path).exists(),
+                          f"File {file_path} should exist")
+    
     @patch('psutil.process_iter')
     def test_vscode_process_identification(self, mock_process_iter):
         """Test VS Code process identification."""
-        mock_process = MagicMock(spec=psutil.Process)
-        mock_process.info = {
-            'pid': 12345,
-            'name': 'code',
-            'create_time': time.time()
-        }
-        mock_process.pid = 12345
-        mock_process.name.return_value = 'code'
-        mock_process_iter.return_value = [mock_process]
-
-        detector = WindowDetector()
-        processes = detector.get_vscode_processes()
-
+        # Mock process objects
+        mock_vscode_process = Mock()
+        mock_vscode_process.info = {'name': 'code', 'pid': 12345}
+        
+        mock_other_process = Mock()
+        mock_other_process.info = {'name': 'firefox', 'pid': 67890}
+        
+        mock_process_iter.return_value = [mock_vscode_process, mock_other_process]
+        
+        detector = WindowDetector(self.test_config)
+        processes = detector.find_vscode_processes()
+        
         self.assertEqual(len(processes), 1)
-        self.assertEqual(processes[0].pid, 12345)
-        self.assertEqual(processes[0].name(), 'code')
-
-    @patch('src.core.window_detector.EWMH')
-    def test_basic_window_detection(self, mock_ewmh_class):
+        self.assertEqual(processes[0]['name'], 'code')
+        self.assertEqual(processes[0]['pid'], 12345)
+    
+    @patch('src.core.window_detector.WindowDetector._get_x11_windows')
+    def test_basic_window_detection(self, mock_get_windows):
         """Test basic window detection functionality."""
-        mock_ewmh = mock_ewmh_class.return_value
-        mock_window = MagicMock()
-        mock_window.id = 123
-
-        # Configure the mock EWMH object
-        def get_wm_pid(win):
-            if win == mock_window:
-                return 12345
-            return None
-
-        def get_wm_name(win):
-            if win == mock_window:
-                return b'Visual Studio Code'
-            return b''
-
-        def get_geometry(win):
-            if win == mock_window:
-                return (10, 20, 800, 600)
-            return None
-
-        mock_ewmh.getClientList.return_value = [mock_window]
-        mock_ewmh.getWmPid.side_effect = get_wm_pid
-        mock_ewmh.getWmName.side_effect = get_wm_name
-        mock_ewmh.getGeometry.side_effect = get_geometry
-        mock_ewmh.getActiveWindow.return_value = mock_window
-
-        detector = WindowDetector()
-
-        # Mock the process that will be associated with the window
-        mock_proc = MagicMock(spec=psutil.Process)
-        mock_proc.name.return_value = "code"
-        mock_proc.pid = 12345
-
-        # Patch get_vscode_processes to return our controlled process list
-        with patch.object(
-            detector, 'get_vscode_processes', return_value=[mock_proc]
-        ):
-            windows = detector.get_vscode_windows()
-            self.assertGreater(
-                len(windows), 0, "Should detect at least one VS Code window"
-            )
-            self.assertEqual(windows[0].pid, 12345)
-            self.assertIn('Visual Studio Code', windows[0].title)
+        # Mock window data
+        mock_windows = [
+            {
+                'id': 123,
+                'title': 'Visual Studio Code',
+                'pid': 12345,
+                'geometry': {'x': 100, 'y': 100, 'width': 800, 'height': 600}
+            },
+            {
+                'id': 456, 
+                'title': 'Firefox',
+                'pid': 67890,
+                'geometry': {'x': 200, 'y': 200, 'width': 1000, 'height': 700}
+            }
+        ]
+        mock_get_windows.return_value = mock_windows
+        
+        detector = WindowDetector(self.test_config)
+        windows = detector.get_vscode_windows()
+        
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]['title'], 'Visual Studio Code')
+    
+    @patch('pyautogui.screenshot')
+    def test_simple_screen_capture(self, mock_screenshot):
+        """Test simple screen capture functionality."""
+        # Create a mock image
+        mock_image = Mock()
+        mock_image.size = (1920, 1080)
+        mock_screenshot.return_value = mock_image
+        
+        capturer = ScreenCapture()
+        image = capturer.capture_screen()
+        
+        self.assertIsNotNone(image)
+        mock_screenshot.assert_called_once()
+    
+    def test_configuration_loading(self):
+        """Test configuration loading and management."""
+        config_manager = ConfigManager()
+        
+        # Test default configuration loads
+        self.assertIsNotNone(config_manager.config)
+        self.assertIn('automation', config_manager.config)
+        self.assertIn('detection', config_manager.config)
+        
+        # Test getting configuration values
+        interval = config_manager.get('automation.interval_seconds')
+        self.assertIsInstance(interval, (int, float))
+        
+        # Test setting configuration values
+        config_manager.set('automation.dry_run', True)
+        self.assertTrue(config_manager.get('automation.dry_run'))
 
 
 class TestPhase2CoreFeatures(unittest.TestCase):
-    """Tests for core features like button detection and click automation."""
-
+    """Test Phase 2: Core Features."""
+    
     def setUp(self):
-        """Set up for core feature tests."""
-        self.config = ConfigManager()
-        self.config.set('detection.template_matching_enabled', False)
-        self.config.set('detection.ocr_enabled', True)
-        self.config.set('detection.template_path', 'path/to/fake_template.png')
-        self.config.set('detection.detection_threshold', 0.8)
-        self.config.set('automation.click_delay_seconds', 0.1)
-        self.config.set('automation.move_duration', 0.2)
-
-    def test_continue_button_detection_ocr(self):
+        """Set up test environment."""
+        self.test_config = {
+            "detection": {
+                "confidence_threshold": 0.8,
+                "button_variants": ["Continue", "Continue >"],
+                "use_ocr": True,
+                "use_template_matching": True
+            },
+            "automation": {
+                "dry_run": True,
+                "click_delay_ms": 100
+            },
+            "logging": {"level": "DEBUG", "console_output": False}
+        }
+        
+        # Create a test image
+        self.test_image = np.zeros((600, 800, 3), dtype=np.uint8)
+    
+    @patch('pytesseract.image_to_data')
+    def test_continue_button_detection_ocr(self, mock_ocr):
         """Test continue button detection using OCR."""
-        # Test the pattern matching logic directly
-        finder = ButtonFinder(self.config)
+        # Mock OCR response
+        mock_ocr.return_value = {
+            'text': ['', 'Continue', ''],
+            'conf': [0, 95, 0],
+            'left': [0, 100, 0],
+            'top': [0, 200, 0], 
+            'width': [0, 80, 0],
+            'height': [0, 30, 0]
+        }
         
-        # Test that the pattern matching works
-        self.assertTrue(finder._matches_continue_pattern("Continue"))
-        self.assertTrue(finder._matches_continue_pattern("continue"))
-        self.assertTrue(finder._matches_continue_pattern("CONTINUE"))
-        self.assertFalse(finder._matches_continue_pattern("Cancel"))
-        self.assertFalse(finder._matches_continue_pattern("Submit"))
+        finder = ButtonFinder(self.test_config)
+        buttons = finder.find_continue_buttons_ocr(self.test_image)
         
-        # Create a simple ButtonLocation to verify the class works
-        button = ButtonLocation(
-            x=100, y=50, width=80, height=30,
-            confidence=0.95, method='OCR', text='Continue'
-        )
-        self.assertEqual(button.x, 100)
-        self.assertEqual(button.y, 50)
-        self.assertEqual(button.center_x, 140)  # 100 + 80/2
-        self.assertEqual(button.center_y, 65)   # 50 + 30/2
-
-    def test_continue_button_detection_template(self):
+        self.assertEqual(len(buttons), 1)
+        self.assertEqual(buttons[0]['text'], 'Continue')
+        self.assertEqual(buttons[0]['confidence'], 95)
+    
+    @patch('cv2.matchTemplate')
+    def test_continue_button_detection_template(self, mock_match):
         """Test continue button detection using template matching."""
-        finder = ButtonFinder(self.config)
+        # Mock template matching result
+        mock_result = np.zeros((520, 720))
+        mock_result[200, 100] = 0.95  # High confidence match
+        mock_match.return_value = mock_result
         
-        # Test that the ButtonFinder initializes correctly
-        self.assertIsNotNone(finder.config_manager)
-        self.assertIsNotNone(finder.continue_patterns)
-        self.assertGreater(len(finder.continue_patterns), 0)
+        finder = ButtonFinder(self.test_config)
         
-        # Test template directory configuration
-        detection_config = finder.config_manager.get('detection', {})
-        self.assertIsInstance(detection_config, dict)
+        # Create a mock template
+        template = np.zeros((30, 80, 3), dtype=np.uint8)
         
-        # Verify the template detection method would be called
-        # (This is a structural test rather than a functional one)
-        self.assertTrue(hasattr(finder, '_find_buttons_template'))
-        self.assertTrue(callable(finder._find_buttons_template))
-
+        with patch('cv2.imread', return_value=template):
+            buttons = finder.find_continue_buttons_template(self.test_image, 
+                                                          "templates/continue_button.png")
+        
+        self.assertGreater(len(buttons), 0)
+        self.assertGreater(buttons[0]['confidence'], 0.8)
+    
     @patch('pyautogui.click')
     def test_mouse_click_automation(self, mock_click):
         """Test mouse click automation."""
-        automator = ClickAutomator(
-            click_delay=self.config.get('automation.click_delay_seconds'),
-            move_duration=self.config.get('automation.move_duration')
-        )
-        button = ButtonLocation(
-            x=100, y=50, width=50, height=30,
-            text='Continue', method='Test', confidence=0.99
-        )
-
-        result = automator.click(button.center_x, button.center_y)
-
-        mock_click.assert_called_once_with(
-            button.center_x,
-            button.center_y,
-            button='left',
-            duration=self.config.get('automation.move_duration')
-        )
-        self.assertTrue(result.success)
-
+        automator = ClickAutomator(self.test_config)
+        
+        button_info = {
+            'center_x': 400,
+            'center_y': 300,
+            'confidence': 0.9
+        }
+        
+        result = automator.click_button(button_info)
+        
+        if not self.test_config['automation']['dry_run']:
+            mock_click.assert_called_once_with(400, 300)
+        
+        self.assertTrue(result)
+    
+    @patch('src.core.window_detector.WindowDetector.get_vscode_windows')
+    @patch('src.core.button_finder.ButtonFinder.find_continue_buttons')
+    def test_multi_window_support(self, mock_find_buttons, mock_get_windows):
+        """Test multi-window support."""
+        # Mock multiple VS Code windows
+        mock_windows = [
+            {'id': 123, 'title': 'VS Code 1', 'geometry': {'x': 0, 'y': 0, 'width': 800, 'height': 600}},
+            {'id': 456, 'title': 'VS Code 2', 'geometry': {'x': 800, 'y': 0, 'width': 800, 'height': 600}}
+        ]
+        mock_get_windows.return_value = mock_windows
+        
+        # Mock button detection
+        mock_find_buttons.return_value = [
+            {'center_x': 400, 'center_y': 300, 'confidence': 0.9}
+        ]
+        
+        engine = AutomationEngine(self.test_config)
+        results = engine.process_all_windows()
+        
+        self.assertEqual(len(results), 2)
+        self.assertEqual(mock_find_buttons.call_count, 2)
+    
     def test_basic_error_handling(self):
         """Test basic error handling."""
+        config_with_errors = {
+            "detection": {"confidence_threshold": "invalid"},  # Invalid type
+            "logging": {"level": "DEBUG", "console_output": False}
+        }
+        
+        # Should handle invalid configuration gracefully
         try:
-            self.config.set('detection.detection_threshold', 'invalid')
-            finder = ButtonFinder(self.config)
-            # We expect this to not raise an unhandled exception
-            buttons = finder.find_continue_buttons(
-                Image.new('RGB', (100, 100)), 0, 0
-            )
-            self.assertIsInstance(buttons, list)
-        except TypeError as e:
-            self.fail(
-                "ButtonFinder should handle invalid config gracefully: "
-                f"{e.__class__.__name__}: {e}"
-            )
+            finder = ButtonFinder(config_with_errors)
+            # Should use default values for invalid config
+            self.assertIsInstance(finder.confidence_threshold, float)
+        except Exception as e:
+            self.fail(f"ButtonFinder should handle invalid config gracefully: {e}")
 
 
-class TestPhase3Integration(unittest.TestCase):
-    """Tests for integration between different components."""
-
+class TestPhase3Enhancement(unittest.TestCase):
+    """Test Phase 3: Enhancement features."""
+    
     def setUp(self):
-        """Set up for integration tests."""
-        self.config_manager = ConfigManager()
-        self.config_manager.set('logging.log_level', 'DEBUG')
-        self.config_manager.set(
-            'logging.log_file', 'logs/test_integration.log'
-        )
-        log_file_str = self.config_manager.get('logging.log_file')
-        self.log_file_path = Path(log_file_str) if log_file_str else None
-        if self.log_file_path and self.log_file_path.exists():
-            self.log_file_path.unlink()
-
+        """Set up test environment."""
+        self.test_config_path = Path("test_config.json")
+        self.test_config = {
+            "automation": {"interval_seconds": 2.0, "dry_run": True},
+            "detection": {"confidence_threshold": 0.8},
+            "safety": {"require_confirmation": False, "safe_mode": True},
+            "logging": {"level": "INFO", "console_output": False},
+            "monitoring": {"enable_metrics": True, "track_success_rate": True}
+        }
+    
     def tearDown(self):
-        """Tear down after integration tests."""
-        if self.log_file_path and self.log_file_path.exists():
-            try:
-                self.log_file_path.unlink()
-            except OSError:
-                pass
-
-    @patch('src.core.automation_engine.AutomationEngine._automation_loop')
-    def test_end_to_end_flow(self, mock_automation_loop):
-        """Test the main end-to-end automation flow."""
-        engine = AutomationEngine(self.config_manager)
-
-        async def run_test():
-            start_task = asyncio.create_task(engine.start())
-            await asyncio.sleep(0.1)
-            self.assertTrue(engine.running)
-            mock_automation_loop.assert_called()
-            await engine.stop()
-            self.assertFalse(engine.running)
-            await start_task
-
-        try:
-            asyncio.run(run_test())
-        except RuntimeError:  # Handles already running event loops
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(run_test())
+        """Clean up test files."""
+        if self.test_config_path.exists():
+            self.test_config_path.unlink()
+    
+    def test_configuration_system(self):
+        """Test advanced configuration system."""
+        # Test saving configuration
+        config_manager = ConfigManager(self.test_config_path)
+        config_manager.config = self.test_config
+        config_manager.save_config()
+        
+        self.assertTrue(self.test_config_path.exists())
+        
+        # Test loading configuration
+        new_config_manager = ConfigManager(self.test_config_path)
+        self.assertEqual(new_config_manager.get('automation.interval_seconds'), 2.0)
+        
+        # Test configuration validation
+        config_manager.set('automation.interval_seconds', -1)
+        # Should handle invalid values appropriately
+    
+    def test_logging_and_monitoring(self):
+        """Test logging and monitoring system."""
+        logger = AutomationLogger(self.test_config['logging'])
+        
+        # Test operation logging
+        op_id = logger.log_operation_start("test_operation", {"detail": "test"})
+        self.assertIsNotNone(op_id)
+        
+        logger.log_operation_success("test_operation", op_id, {"result": "success"})
+        
+        # Test statistics
+        stats = logger.get_statistics()
+        self.assertEqual(stats['operations'], 1)
+        self.assertEqual(stats['successes'], 1)
+        self.assertEqual(stats['failures'], 0)
+        
+        # Test failure logging
+        logger.log_operation_failure("test_operation_2", "Test error")
+        stats = logger.get_statistics()
+        self.assertEqual(stats['operations'], 2)
+        self.assertEqual(stats['failures'], 1)
+    
+    @patch('time.time')
+    def test_performance_optimization(self, mock_time):
+        """Test performance optimization features."""
+        # Mock time progression
+        mock_time.side_effect = [1000, 1001, 1002, 1003]  # 1 second intervals
+        
+        logger = AutomationLogger({
+            "detailed_timing": True,
+            "log_performance": True,
+            "console_output": False
+        })
+        
+        # Simulate operation with timing
+        op_id = logger.log_operation_start("performance_test")
+        logger.log_operation_success("performance_test", op_id)
+        
+        stats = logger.get_statistics()
+        self.assertGreater(stats['operations_per_minute'], 0)
+    
+    @patch('pyautogui.press')
+    def test_safety_features(self, mock_press):
+        """Test safety features and manual override."""
+        config_with_safety = {
+            **self.test_config,
+            "safety": {
+                "safe_mode": True,
+                "emergency_stop_key": "escape",
+                "preserve_focus": True
+            }
+        }
+        
+        automator = ClickAutomator(config_with_safety)
+        
+        # Test safe mode operation
+        button_info = {'center_x': 400, 'center_y': 300, 'confidence': 0.9}
+        result = automator.click_button(button_info)
+        
+        # In safe mode with dry_run, should not actually click
+        self.assertTrue(result)
+        
+        # Test emergency stop (would be triggered by hotkey in real usage)
+        engine = AutomationEngine(config_with_safety)
+        engine.emergency_stop = True  # Simulate emergency stop
+        results = engine.process_all_windows()
+        
+        # Should stop processing when emergency stop is active
+        self.assertEqual(len(results), 0)
 
 
 class TestPhase4Polish(unittest.TestCase):
-    """Tests for project polish, like docs and scripts."""
-
+    """Test Phase 4: Polish features."""
+    
+    def setUp(self):
+        """Set up test environment."""
+        self.test_config = {
+            "automation": {"dry_run": True},
+            "logging": {"level": "INFO", "console_output": False}
+        }
+    
+    def test_installation_scripts(self):
+        """Test installation scripts."""
+        # Verify installation scripts exist and are executable
+        install_script = Path("scripts/install.sh")
+        run_script = Path("scripts/run.sh")
+        
+        self.assertTrue(install_script.exists(), "Install script should exist")
+        self.assertTrue(run_script.exists(), "Run script should exist")
+        
+        # Check if scripts are executable (on Unix systems)
+        import stat
+        if install_script.exists():
+            mode = install_script.stat().st_mode
+            self.assertTrue(mode & stat.S_IEXEC, "Install script should be executable")
+    
+    def test_documentation_completeness(self):
+        """Test documentation completeness."""
+        required_docs = [
+            "README.md",
+            "docs/USAGE.md", 
+            "docs/PROJECT_PLAN.md",
+            "docs/FALLBACK_STRATEGY.md",
+            "docs/EXTENSION_ALTERNATIVE.md"
+        ]
+        
+        for doc_path in required_docs:
+            path = Path(doc_path)
+            self.assertTrue(path.exists(), f"Documentation {doc_path} should exist")
+            
+            # Verify non-empty content
+            if path.exists():
+                content = path.read_text()
+                self.assertGreater(len(content.strip()), 100, 
+                                 f"Documentation {doc_path} should have substantial content")
+    
+    def test_testing_coverage(self):
+        """Test that tests cover all major components."""
+        # Verify test files exist for major components
+        test_files = [
+            "tests/test_phases.py",  # This file
+            "tests/unit/test_config_manager.py"
+        ]
+        
+        for test_file in test_files:
+            self.assertTrue(Path(test_file).exists(), 
+                          f"Test file {test_file} should exist")
+    
     def test_requirements_and_dependencies(self):
         """Test requirements and dependencies."""
-        req_path = Path(__file__).parent.parent / 'requirements.txt'
-        self.assertTrue(
-            req_path.exists(), "requirements.txt should exist"
-        )
-        with open(req_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        requirements_file = Path("requirements.txt")
+        self.assertTrue(requirements_file.exists(), "requirements.txt should exist")
+        
+        # Verify essential dependencies are listed
+        requirements_content = requirements_file.read_text()
+        essential_deps = [
+            "pyautogui",
+            "opencv-python",
+            "pytesseract", 
+            "psutil",
+            "pynput"
+        ]
+        
+        for dep in essential_deps:
+            self.assertIn(dep, requirements_content, 
+                         f"Dependency {dep} should be in requirements.txt")
 
-        self.assertIn(
-            'opencv-python', content,
-            "Dependency opencv-python should be in requirements.txt"
-        )
-        self.assertIn(
-            'pytesseract', content,
-            "Dependency pytesseract should be in requirements.txt"
-        )
-        self.assertIn(
-            'pyautogui', content,
-            "Dependency pyautogui should be in requirements.txt"
-        )
 
-    def test_final_cleanup_script(self):
-        """Test the final cleanup script."""
-        (Path.cwd() / 'tmp').mkdir(exist_ok=True)
-        (Path.cwd() / 'logs').mkdir(exist_ok=True)
-        (Path.cwd() / 'tmp' / 'test.tmp').touch()
-        (Path.cwd() / 'logs' / 'test.log').touch()
-
-        script_path = (
-            Path(__file__).parent.parent / 'scripts' / 'final_cleanup.sh'
-        )
-        self.assertTrue(script_path.exists())
-        self.assertTrue(script_path.is_file())
+class TestIntegration(unittest.TestCase):
+    """Integration tests for the complete automation system."""
+    
+    def setUp(self):
+        """Set up integration test environment."""
+        self.test_config = {
+            "automation": {
+                "interval_seconds": 0.1,  # Fast for testing
+                "dry_run": True,
+                "max_retries": 2
+            },
+            "detection": {
+                "confidence_threshold": 0.7,
+                "use_ocr": True,
+                "use_template_matching": False  # Disable for testing
+            },
+            "safety": {
+                "safe_mode": True,
+                "preserve_focus": True
+            },
+            "logging": {
+                "level": "INFO",
+                "console_output": False
+            }
+        }
+    
+    @patch('src.core.window_detector.WindowDetector.get_vscode_windows')
+    @patch('src.core.button_finder.ButtonFinder.find_continue_buttons')
+    @patch('src.core.click_automator.ClickAutomator.click_button')
+    def test_end_to_end_automation(self, mock_click, mock_find_buttons, mock_get_windows):
+        """Test end-to-end automation workflow."""
+        # Mock the complete workflow
+        mock_get_windows.return_value = [
+            {'id': 123, 'title': 'VS Code', 'geometry': {'x': 0, 'y': 0, 'width': 800, 'height': 600}}
+        ]
+        
+        mock_find_buttons.return_value = [
+            {'center_x': 400, 'center_y': 300, 'confidence': 0.9, 'text': 'Continue'}
+        ]
+        
+        mock_click.return_value = True
+        
+        # Run the automation engine
+        engine = AutomationEngine(self.test_config)
+        results = engine.process_all_windows()
+        
+        # Verify the workflow executed correctly
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0]['success'])
+        self.assertEqual(results[0]['buttons_clicked'], 1)
+        
+        # Verify all components were called
+        mock_get_windows.assert_called_once()
+        mock_find_buttons.assert_called_once()
+        mock_click.assert_called_once()
+    
+    def test_error_recovery(self):
+        """Test error recovery and resilience."""
+        # Test with invalid configuration
+        invalid_config = {"invalid": "config"}
+        
+        try:
+            engine = AutomationEngine(invalid_config)
+            # Should use defaults and not crash
+            self.assertIsNotNone(engine.config)
+        except Exception as e:
+            self.fail(f"System should handle invalid config gracefully: {e}")
+    
+    @patch('src.core.button_finder.ButtonFinder.find_continue_buttons')
+    def test_fallback_scenarios(self, mock_find_buttons):
+        """Test fallback scenarios when primary detection fails."""
+        # Simulate no buttons found
+        mock_find_buttons.return_value = []
+        
+        engine = AutomationEngine(self.test_config)
+        
+        # With fallback enabled, should attempt text input method
+        with patch('src.core.window_detector.WindowDetector.get_vscode_windows') as mock_windows:
+            mock_windows.return_value = [
+                {'id': 123, 'title': 'VS Code', 'geometry': {'x': 0, 'y': 0, 'width': 800, 'height': 600}}
+            ]
+            
+            results = engine.process_all_windows()
+            
+            # Should complete without errors even when no buttons found
+            self.assertEqual(len(results), 1)
+            # Should indicate no buttons were found/clicked
+            self.assertEqual(results[0]['buttons_clicked'], 0)
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # Run all tests
+    unittest.main(verbosity=2)

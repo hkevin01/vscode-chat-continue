@@ -72,7 +72,6 @@ GUI_MODE=true  # Default to GUI mode for better user experience
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
-DEBUG_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -94,10 +93,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --validate)
             VALIDATE_ONLY=true
-            shift
-            ;;
-        --debug)
-            DEBUG_MODE=true
             shift
             ;;
         --help|-h)
@@ -277,24 +272,19 @@ else
     print_success "Found $vscode_count VS Code process(es)"
 fi
 
-# Build arguments for the main script
-ARGS=()
-if [ "$GUI_MODE" = true ]; then
-    ARGS+=("--gui")
-else
-    ARGS+=("--cli")
-fi
+# Prepare command line arguments
+PYTHON_ARGS=()
 
-if [ "$DRY_RUN" = true ]; then
-    ARGS+=("--dry-run")
+if $DRY_RUN; then
+    PYTHON_ARGS+=("--dry-run")
 fi
 
 if [ -n "$CONFIG_FILE" ]; then
-    ARGS+=("--config" "$CONFIG_FILE")
-fi
-
-if [ "$DEBUG_MODE" = true ]; then
-    ARGS+=("--debug")
+    if [ ! -f "$CONFIG_FILE" ]; then
+        print_error "Configuration file not found: $CONFIG_FILE"
+        exit 1
+    fi
+    PYTHON_ARGS+=("--config" "$CONFIG_FILE")
 fi
 
 # Display startup information
@@ -314,7 +304,39 @@ trap 'print_warning "Stopping automation..."; exit 130' INT
 # Run the appropriate application
 if $GUI_MODE; then
     print_info "Launching GUI interface..."
-    python src/gui/main_window.py "${PYTHON_ARGS[@]}"
+    
+    # Test PyQt6 availability first
+    if ! python -c "import PyQt6" 2>/dev/null; then
+        print_error "PyQt6 not available. Falling back to CLI mode..."
+        print_info "Install PyQt6 with: pip install PyQt6"
+        GUI_MODE=false
+    fi
+fi
+
+if $GUI_MODE; then
+    print_info "Launching GUI interface..."
+    
+    # Test PyQt6 availability first
+    if ! python -c "import PyQt6" 2>/dev/null; then
+        print_error "PyQt6 not available. Falling back to CLI mode..."
+        print_info "Install PyQt6 with: pip install PyQt6"
+        GUI_MODE=false
+    fi
+fi
+
+if $GUI_MODE; then
+    # Try to launch GUI through main.py with --gui flag
+    print_info "Starting GUI mode..."
+    if ! python src/main.py --gui "${PYTHON_ARGS[@]}"; then
+        print_error "GUI launch failed. Falling back to CLI mode..."
+        print_info "This might be due to:"
+        print_info "  • No display environment (SSH without X11 forwarding)"
+        print_info "  • Missing PyQt6 dependencies"
+        print_info "  • Display permissions issues"
+        print_info ""
+        print_info "Starting command-line automation..."
+        python src/main.py "${PYTHON_ARGS[@]}"
+    fi
 else
     print_info "Starting command-line automation..."
     python src/main.py "${PYTHON_ARGS[@]}"

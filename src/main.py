@@ -5,21 +5,25 @@ VS Code Chat Continue Button Automation
 Main entry point for the automation tool.
 """
 
+# IMPORTANT: Apply gnome-screenshot fix BEFORE any other imports that might trigger it
+import sys
+from pathlib import Path
+
+# Apply gnome-screenshot prevention immediately
+sys.path.insert(0, str(Path(__file__).parent))
+from utils.gnome_screenshot_fix import setup_screenshot_environment
+
+setup_screenshot_environment()
+
 import argparse
 import asyncio
 import logging
 import signal
-import sys
-from pathlib import Path
 from typing import Optional
 
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-from src.core.automation_engine import AutomationEngine
-from src.core.config_manager import ConfigManager
-from src.utils.logger import setup_logging
+from core.automation_engine import AutomationEngine
+from core.config_manager import ConfigManager
+from utils.logger import setup_logging
 
 
 class VSCodeContinueAutomation:
@@ -123,6 +127,12 @@ Examples:
     )
     
     parser.add_argument(
+        '--gui',
+        action='store_true',
+        help='Launch GUI interface (requires PyQt6)'
+    )
+    
+    parser.add_argument(
         '--version', '-v',
         action='version',
         version='%(prog)s 1.0.0'
@@ -131,13 +141,82 @@ Examples:
     return parser
 
 
+def launch_gui(args) -> int:
+    """Launch the GUI interface."""
+    try:
+        print("🎨 Initializing GUI interface...")
+        
+        # Check environment first
+        import os
+        display = os.environ.get('DISPLAY')
+        wayland_display = os.environ.get('WAYLAND_DISPLAY')
+        
+        if not display and not wayland_display:
+            print("❌ No display environment detected (DISPLAY or WAYLAND_DISPLAY)")
+            print("💡 You might be running on a headless system or over SSH without X11 forwarding")
+            print("💡 Try: ssh -X user@host or use --cli mode instead")
+            return 1
+        
+        print(f"✓ Display environment: {display or wayland_display}")
+        
+        # Test PyQt6 availability
+        try:
+            from PyQt6.QtWidgets import QApplication
+            print("✓ PyQt6 imported successfully")
+        except ImportError as e:
+            print(f"❌ PyQt6 not available: {e}")
+            print("💡 Install PyQt6 with: pip install PyQt6")
+            return 1
+        
+        # Import GUI components
+        from gui.main_window import main as gui_main
+        print("✓ GUI components imported")
+        
+        # Modify sys.argv to pass arguments to GUI
+        import sys
+        original_argv = sys.argv.copy()
+        
+        # Build GUI arguments
+        gui_args = ['gui']
+        if args.config:
+            gui_args.extend(['--config', str(args.config)])
+        if args.dry_run:
+            gui_args.append('--dry-run')
+        if args.debug:
+            gui_args.append('--debug')
+        
+        sys.argv = gui_args
+        
+        print("🚀 Launching GUI...")
+        # Launch GUI
+        exit_code = gui_main()
+        
+        # Restore original argv
+        sys.argv = original_argv
+        return exit_code or 0
+        
+    except ImportError as e:
+        print(f"❌ GUI not available: {e}", file=sys.stderr)
+        print("💡 Install PyQt6 with: pip install PyQt6", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"❌ GUI error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
 async def main() -> int:
     """Main entry point."""
     parser = create_parser()
     args = parser.parse_args()
     
+    # Check if GUI mode is requested
+    if args.gui:
+        return launch_gui(args)
+    
     try:
-        # Create and start application
+        # Create and start CLI application
         app = VSCodeContinueAutomation(args.config)
         
         # Override config with command line arguments
