@@ -480,6 +480,10 @@ class LogWidget(QWidget):
         """Clear all log messages."""
         self.log_text.clear()
     
+    def get_all_logs(self):
+        """Get all log content as plain text."""
+        return self.log_text.toPlainText()
+    
     def export_logs(self):
         """Export logs to file."""
         file_path, _ = QFileDialog.getSaveFileName(
@@ -512,6 +516,9 @@ class MainWindow(QMainWindow):
         """Initialize the user interface."""
         self.setWindowTitle("VS Code Chat Continue Automation")
         self.setGeometry(100, 100, 1000, 700)
+        
+        # Setup menu bar
+        self.setup_menu_bar()
         
         # Apply dark theme
         self.apply_dark_theme()
@@ -588,6 +595,71 @@ class MainWindow(QMainWindow):
         emergency_btn.setMinimumHeight(30)
         layout.addWidget(emergency_btn)
     
+    def setup_menu_bar(self):
+        """Setup the application menu bar."""
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu('&File')
+        
+        # Load config action
+        load_action = file_menu.addAction('&Load Configuration...')
+        load_action.setShortcut('Ctrl+O')
+        load_action.triggered.connect(self.config_tab.load_config_file)
+        
+        # Save config action
+        save_action = file_menu.addAction('&Save Configuration...')
+        save_action.setShortcut('Ctrl+S')
+        save_action.triggered.connect(self.config_tab.save_config_file)
+        
+        file_menu.addSeparator()
+        
+        # Export logs action
+        export_logs_action = file_menu.addAction('&Export Logs...')
+        export_logs_action.triggered.connect(self.log_tab.export_logs)
+        
+        file_menu.addSeparator()
+        
+        # Exit action
+        exit_action = file_menu.addAction('E&xit')
+        exit_action.setShortcut('Ctrl+Q')
+        exit_action.triggered.connect(self.close)
+        
+        # View menu
+        view_menu = menubar.addMenu('&View')
+        
+        # Refresh action
+        refresh_action = view_menu.addAction('&Refresh Windows')
+        refresh_action.setShortcut('F5')
+        refresh_action.triggered.connect(self.refresh_window_detection)
+        
+        # Clear logs action
+        clear_logs_action = view_menu.addAction('&Clear Logs')
+        clear_logs_action.setShortcut('Ctrl+L')
+        clear_logs_action.triggered.connect(self.log_tab.clear_logs)
+        
+        # Tools menu
+        tools_menu = menubar.addMenu('&Tools')
+        
+        # Run diagnostics action
+        diagnostics_action = tools_menu.addAction('&Run Diagnostics')
+        diagnostics_action.triggered.connect(self.run_diagnostics)
+        
+        # Test window detection action
+        test_windows_action = tools_menu.addAction('&Test Window Detection')
+        test_windows_action.triggered.connect(self.test_window_detection)
+        
+        # Help menu
+        help_menu = menubar.addMenu('&Help')
+        
+        # About action
+        about_action = help_menu.addAction('&About')
+        about_action.triggered.connect(self.show_about)
+        
+        # Documentation action
+        docs_action = help_menu.addAction('&Documentation')
+        docs_action.triggered.connect(self.show_documentation)
+
     def create_control_tab(self) -> QWidget:
         """Create the main control tab."""
         widget = QWidget()
@@ -734,29 +806,19 @@ class MainWindow(QMainWindow):
         """Start the automation process."""
         if self.automation_worker and self.automation_worker.isRunning():
             return
-            
+        
         self.log_tab.add_log_message("INFO", "Starting automation...")
         
-        # Apply quick settings to config
-        self.config_manager.set(
-            'automation.detection_interval', self.quick_interval.value()
-        )
-        self.config_manager.set(
-            'automation.dry_run', self.quick_dry_run.isChecked()
-        )
-        self.config_manager.set(
-            'demo_mode', self.quick_demo_mode.isChecked()
-        )
+        # Apply quick settings
+        self.config_manager.set('automation.detection_interval', self.quick_interval.value())
+        self.config_manager.set('automation.dry_run', self.quick_dry_run.isChecked())
+        self.config_manager.set('demo_mode', self.quick_demo_mode.isChecked())
         
-        # Start worker thread
+        # Create and start worker
         self.automation_worker = AutomationWorker(self.config_manager)
         self.automation_worker.status_update.connect(self.update_status)
-        self.automation_worker.stats_update.connect(
-            self.stats_tab.update_stats
-        )
-        self.automation_worker.log_message.connect(
-            self.log_tab.add_log_message
-        )
+        self.automation_worker.stats_update.connect(self.stats_tab.update_stats)
+        self.automation_worker.log_message.connect(self.log_tab.add_log_message)
         
         self.automation_worker.start()
         
@@ -764,16 +826,16 @@ class MainWindow(QMainWindow):
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.status_progress.setVisible(True)
-        self.status_progress.setRange(0, 0)  # Indeterminate progress
         
     def stop_automation(self):
         """Stop the automation process."""
         if self.automation_worker:
-            self.log_tab.add_log_message("INFO", "Stopping automation...")
             self.automation_worker.stop()
-            self.automation_worker.wait()  # Wait for thread to finish
+            self.automation_worker.wait()
             
-        self.update_status("Stopped")
+        self.log_tab.add_log_message("INFO", "Automation stopped")
+        
+        # Update UI
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.status_progress.setVisible(False)
@@ -818,63 +880,138 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.accept()
+    
+    def run_diagnostics(self):
+        """Run comprehensive diagnostics."""
+        self.log_tab.add_log_message("INFO", "Running diagnostics...")
+        try:
+            # Import and run diagnostic script
+            import os
+            import subprocess
+            project_root = Path(__file__).parent.parent.parent
+            script_path = project_root / "tests" / "diagnostic_deep.py"
+            
+            if script_path.exists():
+                env = os.environ.copy()
+                env['DISPLAY'] = os.environ.get('DISPLAY', ':0')
+                result = subprocess.run([sys.executable, str(script_path)], 
+                                      capture_output=True, text=True, env=env)
+                
+                self.log_tab.add_log_message("INFO", "Diagnostic output:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        self.log_tab.add_log_message("DEBUG", f"  {line}")
+                
+                if result.stderr:
+                    for line in result.stderr.split('\n'):
+                        if line.strip():
+                            self.log_tab.add_log_message("ERROR", f"  {line}")
+                            
+                QMessageBox.information(self, "Diagnostics", 
+                    "Diagnostics completed. Check logs for details.")
+            else:
+                msg = f"Diagnostic script not found: {script_path}"
+                self.log_tab.add_log_message("ERROR", msg)
+                QMessageBox.critical(self, "Error", 
+                    f"Diagnostic script not found:\n{script_path}")
+                
+        except Exception as e:
+            self.log_tab.add_log_message("ERROR", f"Failed to run diagnostics: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to run diagnostics:\n{e}")
+    
+    def test_window_detection(self):
+        """Test window detection specifically."""
+        self.log_tab.add_log_message("INFO", "Testing window detection...")
+        try:
+            import os
+            import subprocess
+            project_root = Path(__file__).parent.parent.parent
+            script_path = project_root / "tests" / "debug_window_simple.py"
+            
+            if script_path.exists():
+                env = os.environ.copy()
+                env['DISPLAY'] = os.environ.get('DISPLAY', ':0')
+                result = subprocess.run([sys.executable, str(script_path)], 
+                                      capture_output=True, text=True, env=env)
+                
+                self.log_tab.add_log_message("INFO", "Window detection test output:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        self.log_tab.add_log_message("DEBUG", f"  {line}")
+                        
+                if result.stderr:
+                    for line in result.stderr.split('\n'):
+                        if line.strip():
+                            self.log_tab.add_log_message("ERROR", f"  {line}")
+                            
+                QMessageBox.information(self, "Window Detection Test", 
+                    "Test completed. Check logs for details.")
+            else:
+                msg = f"Test script not found: {script_path}"
+                self.log_tab.add_log_message("ERROR", msg)
+                QMessageBox.critical(self, "Error", 
+                    f"Test script not found:\n{script_path}")
+                
+        except Exception as e:
+            msg = f"Failed to test window detection: {e}"
+            self.log_tab.add_log_message("ERROR", msg)
+            QMessageBox.critical(self, "Error", f"Failed to test window detection:\n{e}")
+    
+    def refresh_window_detection(self):
+        """Refresh window detection manually."""
+        self.log_tab.add_log_message("INFO", "Refreshing window detection...")
+        try:
+            # Import and use window detector
+            from src.core.window_detector import WindowDetector
+            detector = WindowDetector()
+            windows = detector.get_vscode_windows()
+            count = len(windows)
+            self.log_tab.add_log_message("SUCCESS", f"Found {count} VS Code windows")
+            
+            # Update statistics display
+            stats = {'windows_found': count}
+            self.stats_tab.update_stats(stats)
+            
+            QMessageBox.information(self, "Window Detection", 
+                f"Found {count} VS Code windows")
+        except Exception as e:
+            self.log_tab.add_log_message("ERROR", f"Window detection failed: {e}")
+            QMessageBox.critical(self, "Error", f"Window detection failed:\n{e}")
+    
+    def show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(self, "About", 
+            "VS Code Chat Continue Automation\n\n"
+            "Version 1.0.0\n\n"
+            "An automation tool for clicking the Continue button in VS Code Chat.\n\n"
+            "Built with PyQt6 and Python")
 
-
-def create_parser() -> argparse.ArgumentParser:
-    """Create command line argument parser for GUI."""
-    parser = argparse.ArgumentParser(
-        description="VS Code Chat Continue Automation - GUI Interface",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    
-    parser.add_argument(
-        '--config', '-c',
-        type=Path,
-        help='Path to configuration file'
-    )
-    
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Start in dry-run mode'
-    )
-    
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable debug logging'
-    )
-    
-    return parser
-
-
-def main():
-    """Main entry point for GUI application."""
-    # Parse arguments
-    parser = create_parser()
-    args = parser.parse_args()
-    
-    # Create application
-    app = QApplication(sys.argv)
-    app.setApplicationName("VS Code Chat Continue Automation")
-    app.setApplicationVersion("1.0.0")
-    
-    # Create and show main window
-    window = MainWindow(args.config)
-    
-    # Apply command line overrides
-    if args.dry_run:
-        window.config_manager.set('automation.dry_run', True)
-        window.quick_dry_run.setChecked(True)
+    def show_documentation(self):
+        """Show documentation."""
+        docs_text = """
+        VS Code Chat Continue Automation - Quick Guide
         
-    if args.debug:
-        window.config_manager.set('logging.level', 'DEBUG')
-    
-    window.show()
-    
-    # Run application
-    sys.exit(app.exec())
-
-
-if __name__ == '__main__':
-    main()
+        1. Configuration:
+           - Use the Configuration tab to set up automation parameters
+           - Load/save configurations using the File menu
+        
+        2. Window Detection:
+           - The tool automatically detects VS Code windows
+           - Use Tools > Test Window Detection to verify detection
+        
+        3. Automation:
+           - Click Start Automation to begin automated clicking
+           - Use Demo Mode for testing without actual clicks
+           - Emergency Stop button for immediate halt
+        
+        4. Monitoring:
+           - Statistics tab shows real-time performance
+           - Logs tab displays detailed operation logs
+        
+        5. Troubleshooting:
+           - Use Tools > Run Diagnostics for system checks
+           - Check logs for error messages
+           - Ensure DISPLAY environment variable is set
+        """
+        
+        QMessageBox.information(self, "Documentation", docs_text)
