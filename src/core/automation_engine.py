@@ -9,8 +9,8 @@ from src.core.button_finder import ButtonFinder, ButtonLocation
 from src.core.click_automator import ClickAutomator
 from src.core.config_manager import ConfigManager
 from src.core.window_detector import VSCodeWindow, WindowDetector
+from src.utils.audio_suppressor import disable_audio_suppression, enable_audio_suppression
 from src.utils.screen_capture import ScreenCapture
-from src.utils.audio_suppressor import enable_audio_suppression, disable_audio_suppression
 
 try:
     from pynput import keyboard, mouse
