@@ -1,51 +1,226 @@
-[tool.pylint]
-# Disable specific pylint warnings that are too strict for this project
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[tool.pylint.messages_control]
-disable = [
-    "line-too-long",           # C0301: Ignore long lines (especially for user messages)
-    "import-error",            # E0401: Ignore import errors for optional dependencies  
-    "unused-import",           # W0611: Ignore unused imports (often needed for compatibility)
-    "redefined-outer-name",    # W0621: Allow redefining names in different scopes
-    "broad-except",            # W0703: Allow catching general Exception for robustness
-    "bare-except",             # W0702: Allow bare except for compatibility fallbacks
-    "too-many-locals",         # R0914: Allow many local variables in complex functions
-    "too-many-statements",     # R0915: Allow many statements in main functions
-    "too-many-branches",       # R0912: Allow complex branching for platform compatibility
-    "missing-docstring",       # C0111: Don't require docstrings everywhere
-    "invalid-name",            # C0103: Allow variable names like 'e', 'x', 'y'
-    "unused-variable",         # W0613: Allow unused variables in fallback code
-    "global-statement",        # W0603: Allow global statements when needed
-    "consider-using-f-string", # C0209: Don't force f-strings everywhere
-    "trailing-whitespace",     # C0303: Allow trailing whitespace
-    "multiple-imports",        # C0410: Allow multiple imports on one line
-    "wrong-import-position",   # C0413: Allow imports in different positions
-    "import-outside-toplevel", # C0415: Allow imports inside functions for optional deps
+[project]
+name = "vscode-chat-continue"
+version = "1.0.0"
+description = "Automated VS Code Copilot Continue button detection and clicking tool"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Kevin", email = "kevin@example.com"}
+]
+maintainers = [
+    {name = "Kevin", email = "kevin@example.com"}
+]
+keywords = ["vscode", "automation", "copilot", "gui", "productivity"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Environment :: X11 Applications :: Qt",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "PyQt6>=6.5.0",
+    "pyautogui>=0.9.54",
+    "pynput>=1.7.6",
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "pytesseract>=0.3.10",
+    "psutil>=5.9.0",
+    "python-xlib>=0.33; sys_platform=='linux'",
+    "ewmh>=0.1.6; sys_platform=='linux'",
 ]
 
-[tool.pylint.format]
-max-line-length = 120 # Allow longer lines than default 79
-
-[tool.flake8]
-max-line-length = 120
-ignore = [
-    "E501", # Line too long
-    "E402", # Module level import not at top
-    "F401", # Imported but unused
-    "F841", # Local variable assigned but never used
-    "W503", # Line break before binary operator
-    "E722", # Do not use bare except
-    "E203", # Whitespace before ':'
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-qt>=4.2.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "pylint>=2.17.0",
+    "mypy>=1.5.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.3.0",
+    "build>=0.10.0",
+    "twine>=4.0.0",
+]
+test = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-qt>=4.2.0",
+    "pytest-mock>=3.11.0",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/username/vscode-chat-continue"
+Documentation = "https://github.com/username/vscode-chat-continue/blob/main/README.md"
+Repository = "https://github.com/username/vscode-chat-continue"
+Issues = "https://github.com/username/vscode-chat-continue/issues"
+Changelog = "https://github.com/username/vscode-chat-continue/blob/main/CHANGELOG.md"
+
+[project.scripts]
+vscode-continue = "src.main:main"
+vscode-continue-gui = "src.gui.main_window:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.md", "*.txt", "*.png", "*.ico"]
+
+# Testing configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=src",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "gui: marks tests that require GUI",
+]
+
+# Code formatting and linting
 [tool.black]
-line-length = 120
-skip-string-normalization = true
+line-length = 100
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
 
 [tool.isort]
-line_length = 120
+profile = "black"
+line_length = 100
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = [
+    "E203",  # whitespace before ':'
+    "E501",  # line too long (handled by black)
+    "W503",  # line break before binary operator
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    "docs/source/conf.py",
+    "old",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+]
+
+[tool.pylint.main]
+load-plugins = ["pylint.extensions.docparams"]
+
+[tool.pylint.messages_control]
+disable = [
+    "line-too-long",
+    "missing-docstring",
+    "import-error",
+    "too-many-instance-attributes",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-statements",
+    "broad-except",
+    "unused-argument",
+    "invalid-name",
+]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pyautogui.*",
+    "cv2.*",
+    "pytesseract.*",
+    "Xlib.*",
+    "ewmh.*",
+    "PyQt6.*",
+]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/conftest.py",
+    "*/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
 ensure_newline_before_comments = true

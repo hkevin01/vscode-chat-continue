@@ -1,0 +1,30 @@
+# Temporary Files Directory
+
+This directory contains temporary files created during automation execution.
+
+## Contents
+
+- Screenshot captures during automation
+- Temporary image processing files
+- Cache files for window detection
+- Debug artifacts and test outputs
+
+## Cleanup
+
+Files in this directory are automatically cleaned up:
+- After successful automation runs
+- On system startup
+- When files are older than 24 hours
+
+## Manual Cleanup
+
+You can manually clean this directory by running:
+```bash
+./scripts/cleanup_temp.sh
+```
+
+## Important Notes
+
+- Do not store permanent files here
+- Files may be deleted without warning
+- Use absolute paths when referencing files outside this directory

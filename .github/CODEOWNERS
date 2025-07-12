@@ -1,0 +1,26 @@
+# Code Owners
+
+# Global owners
+* @username
+
+# Core automation logic
+/src/core/ @username @core-team
+
+# GUI components
+/src/gui/ @username @ui-team
+
+# Documentation
+/docs/ @username @docs-team
+README.md @username @docs-team
+*.md @username @docs-team
+
+# CI/CD and infrastructure
+/.github/ @username @devops-team
+/scripts/ @username @devops-team
+pyproject.toml @username @devops-team
+
+# Tests
+/tests/ @username @qa-team
+
+# Configuration
+/config/ @username @core-team

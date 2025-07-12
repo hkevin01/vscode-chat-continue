@@ -107,6 +107,16 @@ class ClickAutomator:
                 pyautogui.FAILSAFE = False
                 # Set reasonable pause between actions
                 pyautogui.PAUSE = 0.1
+                # Disable any potential beeps or sounds
+                if hasattr(pyautogui, '_beep'):
+                    pyautogui._beep = lambda: None
+                # Suppress error dialogs and sounds
+                if hasattr(pyautogui, '_display'):
+                    try:
+                        import os
+                        os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+                    except Exception:
+                        pass
             except Exception as e:
                 self.logger.debug(f"Failed to configure pyautogui: {e}")
     

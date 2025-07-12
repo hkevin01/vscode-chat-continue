@@ -1,16 +1,22 @@
-# VS Code Chat Continue Button Automation
+# VS Code Chat Continue Automation
 
-Automatically click the "Continue" button in VS Code Copilot Chat across all open VS Code windows.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Pylint](https://img.shields.io/badge/linting-pylint-yellowgreen)](https://github.com/PyCQA/pylint)
 
-## 🚀 Features
+A sophisticated automation tool that intelligently detects and clicks "Continue" buttons in VS Code Copilot chat sessions, enhancing developer productivity by seamlessly maintaining conversation flow.
 
-- **Auto-detection**: Finds all VS Code windows automatically
-- **Smart Recognition**: Identifies Continue buttons using multiple detection methods
-- **Multi-window Support**: Handles multiple VS Code instances simultaneously
-- **Safety Controls**: Emergency stop and user activity detection
-- **Configurable**: Customizable intervals and filtering options
-- **Modern GUI**: PyQt6-based interface with dark theme and real-time monitoring
-- **Fallback Strategy**: Text input automation when buttons aren't found
+## 🌟 Features
+
+- **🤖 Intelligent Button Detection**: Advanced OCR and computer vision algorithms detect Continue buttons across different VS Code themes and languages
+- **🖥️ Multi-Platform Support**: Works on Linux (X11/Wayland), Windows, and macOS
+- **🔧 Modern GUI Interface**: Professional PyQt6 interface with dark theme, real-time monitoring, and configuration management
+- **⚡ High Performance**: Optimized algorithms with caching and efficient screen capture
+- **🛡️ Safety Features**: User activity detection, emergency stop, manual override, and comprehensive error handling
+- **📊 Analytics & Monitoring**: Real-time performance tracking, success rate statistics, and detailed logging
+- **🎯 Fallback Strategies**: Text-based continue commands when buttons aren't detected
+- **⚙️ Highly Configurable**: JSON-based configuration with validation and hot-reload support
 
 ## 📋 Requirements
 

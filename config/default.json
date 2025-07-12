@@ -32,7 +32,18 @@
     "click_offset": {
       "x": 0,
       "y": 0
-    }
+    },
+    "enable_audio_feedback": false,
+    "dry_run": false
+  },
+  "audio": {
+    "enabled": false,
+    "beep_on_success": false,
+    "beep_on_error": false,
+    "beep_on_start": false,
+    "beep_on_stop": false,
+    "system_sounds": false,
+    "volume": 0.0
   },
   "filtering": {
     "include_workspaces": [],

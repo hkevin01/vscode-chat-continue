@@ -1,0 +1,90 @@
+name: 📚 Documentation
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - '*.md'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - '*.md'
+
+jobs:
+  build-docs:
+    name: 📖 Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e \".[docs]\"
+    
+    - name: Build Sphinx documentation
+      run: |
+        cd docs
+        make html
+    
+    - name: Check documentation links
+      run: |
+        pip install linkchecker
+        linkchecker docs/_build/html/
+      continue-on-error: true
+    
+    - name: Upload documentation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/_build/html/
+
+  deploy-docs:
+    name: 🚀 Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download documentation artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs/_build/html/
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: docs/_build/html/
+        cname: docs.yourdomain.com  # Optional: custom domain
+
+  lint-docs:
+    name: 🔍 Lint Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Lint Markdown files
+      uses: articulate/actions-markdownlint@v1
+      with:
+        config: .markdownlint.json
+        files: '**/*.md'
+    
+    - name: Check spelling
+      uses: streetsidesoftware/cspell-action@v2
+      with:
+        files: '**/*.md'
+        config: .cspell.json

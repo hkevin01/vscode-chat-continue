@@ -10,6 +10,7 @@ from src.core.click_automator import ClickAutomator
 from src.core.config_manager import ConfigManager
 from src.core.window_detector import VSCodeWindow, WindowDetector
 from src.utils.screen_capture import ScreenCapture
+from src.utils.audio_suppressor import enable_audio_suppression, disable_audio_suppression
 
 try:
     from pynput import keyboard, mouse
@@ -237,6 +238,13 @@ class AutomationEngine:
             return
         
         self.logger.info("Starting automation engine...")
+        
+        # Enable audio suppression if configured
+        audio_enabled = self.config_manager.get('audio.enabled', False)
+        if not audio_enabled:
+            enable_audio_suppression()
+            self.logger.debug("Audio suppression enabled")
+        
         self.running = True
         
         # Create main automation task
