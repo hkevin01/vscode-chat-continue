@@ -74,8 +74,9 @@ class ButtonFinder:
             r'\bmore\b',
         ]
         
-        # OCR configuration with more permissive settings
-        self.tesseract_config = r'--oem 3 --psm 6'
+        # OCR configuration with more permissive settings for better detection
+        self.tesseract_config = r'--oem 3 --psm 8'  # Single word mode
+        self.tesseract_config_backup = r'--oem 3 --psm 6'  # Block of text mode
         
         self._check_dependencies()
     
@@ -160,21 +161,29 @@ class ButtonFinder:
         buttons = []
         
         try:
-            # Get detailed OCR data
-            ocr_data = pytesseract.image_to_data(image, config=self.tesseract_config, 
-                                               output_type=pytesseract.Output.DICT)
+            # Try primary OCR configuration (single word mode)
+            try:
+                ocr_data = pytesseract.image_to_data(image, config=self.tesseract_config, 
+                                                   output_type=pytesseract.Output.DICT)
+                self.logger.debug("Using PSM 8 (single word mode) for OCR")
+            except Exception as e:
+                self.logger.debug(f"PSM 8 failed: {e}, trying backup configuration")
+                # Fallback to block text mode
+                ocr_data = pytesseract.image_to_data(image, config=self.tesseract_config_backup, 
+                                                   output_type=pytesseract.Output.DICT)
+                self.logger.debug("Using PSM 6 (block text mode) for OCR")
             
             # Process each detected text element
             for i in range(len(ocr_data['text'])):
                 text = ocr_data['text'][i].strip().lower()
                 confidence = float(ocr_data['conf'][i])
                 
-                # Debug: log all detected text
-                if text and confidence > 10:
+                # Debug: log all detected text with lower threshold
+                if text and confidence > 5:
                     self.logger.debug(f"OCR detected: '{text}' (confidence: {confidence})")
                 
-                # Skip low confidence or empty text (lowered threshold for debugging)
-                if confidence < 20 or not text:
+                # Skip low confidence or empty text (very low threshold for debugging)
+                if confidence < 10 or not text:
                     continue
                 
                 # Check if text matches continue patterns
@@ -186,7 +195,7 @@ class ButtonFinder:
                     height = ocr_data['height'][i]
                     
                     # Expand the button area slightly for better clicking
-                    padding = 10
+                    padding = 15  # Increased padding for easier clicking
                     button = ButtonLocation(
                         x=max(0, x - padding),
                         y=max(0, y - padding),
@@ -608,3 +617,88 @@ class ButtonFinder:
         return (abs(pixel[0] - target[0]) < tolerance and
                 abs(pixel[1] - target[1]) < tolerance and
                 abs(pixel[2] - target[2]) < tolerance)
+    
+    def _preprocess_for_ocr(self, image: Image.Image) -> List[Image.Image]:
+        """Preprocess image for better OCR detection.
+        
+        Args:
+            image: Original PIL Image
+            
+        Returns:
+            List of processed images to try for OCR
+        """
+        processed_images = [image]  # Always include original
+        
+        try:
+            if HAS_PIL:
+                # Convert to grayscale
+                gray = image.convert('L')
+                processed_images.append(gray)
+                
+                # High contrast (good for dark themes)
+                from PIL import ImageEnhance
+                enhancer = ImageEnhance.Contrast(gray)
+                high_contrast = enhancer.enhance(2.0)
+                processed_images.append(high_contrast)
+                
+                # Inverted (white text on black becomes black on white)
+                from PIL import ImageOps
+                inverted = ImageOps.invert(gray)
+                processed_images.append(inverted)
+                
+                # Inverted high contrast
+                inverted_contrast = ImageEnhance.Contrast(inverted).enhance(2.0)
+                processed_images.append(inverted_contrast)
+                
+                # Threshold (binary black/white)
+                import numpy as np
+                arr = np.array(gray)
+                threshold = np.mean(arr)
+                binary = Image.fromarray((arr > threshold) * 255)
+                processed_images.append(binary)
+                
+        except Exception as e:
+            self.logger.debug(f"Image preprocessing error: {e}")
+            
+        return processed_images
+    
+    def _try_multiple_ocr_configs(self, image: Image.Image) -> Dict[str, Any]:
+        """Try multiple OCR configurations and return the best result.
+        
+        Args:
+            image: PIL Image to process
+            
+        Returns:
+            Best OCR result dictionary
+        """
+        configs = [
+            ('PSM 6 Block', '--oem 3 --psm 6'),
+            ('PSM 8 Word', '--oem 3 --psm 8'), 
+            ('PSM 3 Auto', '--oem 3 --psm 3'),
+            ('PSM 11 Sparse', '--oem 3 --psm 11'),
+            ('PSM 7 Line', '--oem 3 --psm 7'),
+        ]
+        
+        best_result = None
+        best_word_count = 0
+        
+        for name, config in configs:
+            try:
+                result = pytesseract.image_to_data(image, config=config,
+                                                 output_type=pytesseract.Output.DICT)
+                
+                # Count meaningful words (length > 1, confidence > 10)
+                word_count = sum(1 for i, text in enumerate(result['text']) 
+                               if len(text.strip()) > 1 and result['conf'][i] > 10)
+                
+                self.logger.debug(f"OCR {name}: {word_count} meaningful words")
+                
+                if word_count > best_word_count:
+                    best_word_count = word_count
+                    best_result = result
+                    self.logger.debug(f"New best OCR result: {name}")
+                    
+            except Exception as e:
+                self.logger.debug(f"OCR config {name} failed: {e}")
+                
+        return best_result or {'text': [], 'conf': [], 'left': [], 'top': [], 'width': [], 'height': []}

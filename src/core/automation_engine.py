@@ -5,11 +5,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from core.button_finder import ButtonFinder, ButtonLocation
-from core.click_automator import ClickAutomator
-from core.config_manager import ConfigManager
-from core.window_detector import VSCodeWindow, WindowDetector
-from utils.screen_capture import ScreenCapture
+from src.core.button_finder import ButtonFinder, ButtonLocation
+from src.core.click_automator import ClickAutomator
+from src.core.config_manager import ConfigManager
+from src.core.window_detector import VSCodeWindow, WindowDetector
+from src.utils.screen_capture import ScreenCapture
 
 try:
     from pynput import keyboard, mouse
@@ -336,12 +336,21 @@ class AutomationEngine:
             )
             
             if not screenshot:
-                self.logger.warning(f"Failed to capture window: {window}")
-                return
+                # Fallback: try capturing full screen and search entire screen
+                self.logger.debug(f"Window capture failed for {window.title}, trying full screen capture")
+                screenshot = self.screen_capture.capture_screen()
+                if screenshot:
+                    # Search the entire screen instead of just the window region
+                    window_x, window_y = 0, 0
+                else:
+                    self.logger.warning(f"Both window and full screen capture failed for: {window}")
+                    return
+            else:
+                window_x, window_y = window.x, window.y
             
             # Find continue buttons
             buttons = self.button_finder.find_continue_buttons(
-                screenshot, window.x, window.y
+                screenshot, window_x, window_y
             )
             
             self.logger.debug(f"Found {len(buttons)} continue buttons in window")

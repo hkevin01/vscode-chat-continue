@@ -9,9 +9,12 @@ Main entry point for the automation tool.
 import sys
 from pathlib import Path
 
-# Apply gnome-screenshot prevention immediately
+# Add the project root to Python path for proper imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(Path(__file__).parent))
-from utils.gnome_screenshot_fix import setup_screenshot_environment
+
+from src.utils.gnome_screenshot_fix import setup_screenshot_environment
 
 setup_screenshot_environment()
 
@@ -21,9 +24,9 @@ import logging
 import signal
 from typing import Optional
 
-from core.automation_engine import AutomationEngine
-from core.config_manager import ConfigManager
-from utils.logger import setup_logging
+from src.core.automation_engine import AutomationEngine
+from src.core.config_manager import ConfigManager
+from src.utils.logger import setup_logging
 
 
 class VSCodeContinueAutomation:

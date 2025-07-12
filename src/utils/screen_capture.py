@@ -186,24 +186,31 @@ class ScreenCapture:
             PIL Image object or None if capture failed
         """
         try:
+            # Validate input parameters
+            if width <= 0 or height <= 0:
+                self.logger.error(f"Invalid region dimensions: {width}x{height}")
+                return None
+                
             bbox = (x, y, x + width, y + height)
             
             # Linux-specific capture logic
             if self.platform == "Linux":
                 # Try direct region capture methods first
                 imagemagick_result = self._capture_with_imagemagick(x, y, width, height)
-                if imagemagick_result:
+                if imagemagick_result and self._validate_screenshot(imagemagick_result, width//2, height//2):
                     return imagemagick_result
                 
                 scrot_result = self._capture_with_scrot(x, y, width, height)
-                if scrot_result:
+                if scrot_result and self._validate_screenshot(scrot_result, width//2, height//2):
                     return scrot_result
                 
                 # Fallback for Linux: capture full screen and crop
                 self.logger.debug("Linux-native region capture failed. Attempting to crop a full screenshot.")
                 full_screen = self.capture_screen()
-                if full_screen:
-                    return full_screen.crop(bbox)
+                if full_screen and self._validate_screenshot(full_screen):
+                    cropped = full_screen.crop(bbox)
+                    if self._validate_screenshot(cropped, width//2, height//2):
+                        return cropped
                 
                 self.logger.error("All region capture methods for Linux failed.")
                 return None
@@ -211,7 +218,9 @@ class ScreenCapture:
             # For Windows/macOS, prefer PIL ImageGrab for region capture
             if HAS_PIL:
                 try:
-                    return ImageGrab.grab(bbox=bbox)
+                    result = ImageGrab.grab(bbox=bbox)
+                    if self._validate_screenshot(result, width//2, height//2):
+                        return result
                 except Exception as e:
                     self.logger.debug(f"PIL capture failed: {e}")
             
@@ -465,3 +474,33 @@ class ScreenCapture:
             True if at least one capture method is available
         """
         return HAS_PIL or HAS_PYAUTOGUI or HAS_PYSCREENSHOT
+    
+    def _validate_screenshot(self, screenshot: Optional[Image.Image], min_width: int = 100, min_height: int = 100) -> bool:
+        """Validate that a screenshot is reasonable size and not corrupted.
+        
+        Args:
+            screenshot: PIL Image to validate
+            min_width: Minimum acceptable width
+            min_height: Minimum acceptable height
+            
+        Returns:
+            True if screenshot is valid, False otherwise
+        """
+        if not screenshot:
+            return False
+            
+        width, height = screenshot.size
+        
+        # Check for suspiciously small screenshots (like the 16x13 issue)
+        if width < min_width or height < min_height:
+            self.logger.warning(f"Screenshot too small: {width}x{height} (min: {min_width}x{min_height})")
+            return False
+            
+        # Check for blank or corrupt images
+        try:
+            # Test if we can access pixel data
+            screenshot.getpixel((0, 0))
+            return True
+        except Exception as e:
+            self.logger.warning(f"Screenshot validation failed: {e}")
+            return False
