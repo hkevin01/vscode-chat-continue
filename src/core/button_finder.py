@@ -154,6 +154,9 @@ class ButtonFinder:
                 self.logger.debug(f"Blue rectangle detection found {len(fallback_buttons)} buttons")
             
             # Remove duplicates and sort by confidence
+            buttons = self._filter_non_continue_buttons(buttons, 
+                                                       image.width, 
+                                                       image.height)
             buttons = self._deduplicate_buttons(buttons)
             buttons.sort(key=lambda b: b.confidence, reverse=True)
             
@@ -876,52 +879,93 @@ class ButtonFinder:
         
         return buttons
 
-    def _is_in_chat_panel_area(self, x: int, y: int, image_width: int, image_height: int) -> bool:
+    def _is_search_field_or_top_element(self, button: ButtonLocation, 
+                                        image_width: int, 
+                                        image_height: int) -> bool:
+        """Check if a button is likely a search field or top toolbar element.
+        
+        Args:
+            button: Button location to check
+            image_width: Width of the captured image
+            image_height: Height of the captured image
+            
+        Returns:
+            True if this appears to be a search field or top element
+        """
+        # Check if button is in the top area (search bar, toolbar, etc.)
+        top_area_height = min(100, image_height * 0.15)  # Top 15% or 100px
+        if button.y < top_area_height:
+            self.logger.debug(f"Button at ({button.x}, {button.y}) is in top area "
+                            f"(< {top_area_height}px), likely search/toolbar")
+            return True
+        
+        # Check if button looks like a search field (wide and shallow)
+        aspect_ratio = button.width / button.height if button.height > 0 else 0
+        if aspect_ratio > 8:  # Very wide buttons are likely search fields
+            self.logger.debug(f"Button at ({button.x}, {button.y}) has wide "
+                            f"aspect ratio {aspect_ratio:.1f}, likely search field")
+            return True
+        
+        # Check if button is in the left sidebar area (Explorer, etc.)
+        left_sidebar_width = min(300, image_width * 0.2)  # Left 20% or 300px
+        if button.x < left_sidebar_width and button.y < image_height * 0.8:
+            self.logger.debug(f"Button at ({button.x}, {button.y}) is in left "
+                            f"sidebar area, likely navigation")
+            return True
+        
+        # Check if button text contains search-related terms
+        if button.text:
+            text_lower = button.text.lower().strip()
+            search_terms = [
+                'search', 'find', 'filter', 'query', 'lookup', 'locate',
+                'explorer', 'files', 'folders', 'workspace', 'project',
+                'extensions', 'marketplace', 'settings', 'preferences'
+            ]
+            
+            for term in search_terms:
+                if term in text_lower:
+                    self.logger.debug(f"Button text '{button.text}' contains "
+                                    f"search term '{term}'")
+                    return True
+        
+        return False
+
+    def _is_in_chat_panel_area(self, x: int, y: int, 
+                              image_width: int, 
+                              image_height: int) -> bool:
         """Check if coordinates are likely in the chat panel area.
         
         Args:
             x: X coordinate
-            y: Y coordinate
-            image_width: Image width
-            image_height: Image height
+            y: Y coordinate  
+            image_width: Width of the captured image
+            image_height: Height of the captured image
             
         Returns:
-            True if likely in chat panel
+            True if coordinates are likely in chat panel
         """
-        # VS Code chat panel is typically on the right side
-        # Usually takes up 25-40% of the width
-        chat_panel_left = int(image_width * 0.6)  # Right 40% of screen
+        # Chat panel is typically in the right half and bottom 2/3 of screen
+        right_half_start = image_width * 0.4  # Allow some margin
+        bottom_two_thirds_start = image_height * 0.3
         
-        # Continue button is typically in bottom area of chat panel
-        chat_panel_bottom = int(image_height * 0.8)  # Bottom 20% of screen
+        in_right_area = x > right_half_start
+        in_lower_area = y > bottom_two_thirds_start
         
-        return x > chat_panel_left and y > chat_panel_bottom
+        # Also avoid the very bottom (status bar)
+        status_bar_height = 30
+        not_in_status_bar = y < (image_height - status_bar_height)
+        
+        is_chat_area = in_right_area and in_lower_area and not_in_status_bar
+        
+        if is_chat_area:
+            self.logger.debug(f"Position ({x}, {y}) is in chat panel area")
+        else:
+            self.logger.debug(f"Position ({x}, {y}) is NOT in chat panel area "
+                            f"(right: {in_right_area}, lower: {in_lower_area}, "
+                            f"not_status: {not_in_status_bar})")
+        
+        return is_chat_area
 
-    def _filter_chat_panel_buttons(self, buttons: List[ButtonLocation], 
-                                 image_width: int, image_height: int) -> List[ButtonLocation]:
-        """Filter buttons to only include those likely in the chat panel.
-        
-        Args:
-            buttons: List of detected buttons
-            image_width: Image width
-            image_height: Image height
-            
-        Returns:
-            Filtered list of buttons
-        """
-        filtered = []
-        
-        for button in buttons:
-            if self._is_in_chat_panel_area(button.x, button.y, image_width, image_height):
-                # Boost confidence for buttons in chat panel area
-                button.confidence = min(1.0, button.confidence + 0.2)
-                filtered.append(button)
-                self.logger.debug(f"Button at ({button.x}, {button.y}) is in chat panel area")
-            else:
-                self.logger.debug(f"Button at ({button.x}, {button.y}) NOT in chat panel area")
-        
-        return filtered
-    
     def _detect_specific_continue_button(self, image: Image.Image, window_x: int, window_y: int) -> List[ButtonLocation]:
         """Detect the specific blue Continue button with white text.
         
@@ -1028,3 +1072,209 @@ class ButtonFinder:
             self.logger.debug(f"Specific Continue button detection failed: {e}")
         
         return buttons
+
+    def _filter_non_continue_buttons(self, buttons: List[ButtonLocation],
+                                     image_width: int = 0,
+                                     image_height: int = 0) -> List[ButtonLocation]:
+        """Filter out buttons that are clearly not Continue buttons.
+        
+        Args:
+            buttons: List of button locations to filter
+            image_width: Width of captured image for position filtering
+            image_height: Height of captured image for position filtering
+            
+        Returns:
+            Filtered list of buttons
+        """
+        filtered = []
+        
+        # Words/phrases that indicate this is NOT a Continue button
+        exclude_patterns = [
+            r'\bsearch\b',      # Search buttons
+            r'\bfind\b',        # Find buttons  
+            r'\bopen\b',        # Open buttons
+            r'\bfile\b',        # File buttons
+            r'\bedit\b',        # Edit buttons
+            r'\bview\b',        # View buttons
+            r'\bhelp\b',        # Help buttons
+            r'\bsettings\b',    # Settings buttons
+            r'\boptions\b',     # Options buttons
+            r'\bpreferences\b', # Preferences buttons
+            r'\bterminal\b',    # Terminal buttons
+            r'\bconsole\b',     # Console buttons
+            r'\bdebug\b',       # Debug buttons
+            r'\brun\b',         # Run buttons
+            r'\bbuild\b',       # Build buttons
+            r'\btest\b',        # Test buttons
+            r'\bgit\b',         # Git buttons
+            r'\bcommit\b',      # Commit buttons
+            r'\bpush\b',        # Push buttons
+            r'\bpull\b',        # Pull buttons
+            r'\bmerge\b',       # Merge buttons
+            r'\bbranch\b',      # Branch buttons
+            r'\bsync\b',        # Sync buttons
+            r'\brefresh\b',     # Refresh buttons
+            r'\breload\b',      # Reload buttons
+            r'\bclose\b',       # Close buttons
+            r'\bcancel\b',      # Cancel buttons
+            r'\babort\b',       # Abort buttons
+            r'\bstop\b',        # Stop buttons
+            r'\bpause\b',       # Pause buttons
+            r'\breset\b',       # Reset buttons
+            r'\bclear\b',       # Clear buttons
+            r'\bdelete\b',      # Delete buttons
+            r'\bremove\b',      # Remove buttons
+            r'\bundo\b',        # Undo buttons
+            r'\bredo\b',        # Redo buttons
+            r'\bcopy\b',        # Copy buttons
+            r'\bpaste\b',       # Paste buttons
+            r'\bcut\b',         # Cut buttons
+            r'\bselect\b',      # Select buttons
+            r'\bmenu\b',        # Menu buttons
+            r'\bdropdown\b',    # Dropdown buttons
+            r'\bfilter\b',      # Filter buttons
+            r'\bsort\b',        # Sort buttons
+            r'\bexport\b',      # Export buttons
+            r'\bimport\b',      # Import buttons
+            r'\bsave\b',        # Save buttons (except "Save and Continue")
+            r'\bload\b',        # Load buttons
+            r'\bnew\b',         # New buttons
+            r'\bcreate\b',      # Create buttons
+            r'\badd\b',         # Add buttons
+            r'\binsert\b',      # Insert buttons
+            r'\bextension\b',   # Extension buttons
+            r'\bplugin\b',      # Plugin buttons
+            r'\bworkspace\b',   # Workspace buttons
+            r'\bfolder\b',      # Folder buttons
+            r'\bdirectory\b',   # Directory buttons
+            r'\bpath\b',        # Path buttons
+            r'\burl\b',         # URL buttons
+            r'\blink\b',        # Link buttons
+            r'\bgo\s+to\b',     # Go to buttons
+            r'\bnavigate\b',    # Navigate buttons
+            r'\bback\b',        # Back buttons
+            r'\bforward\b',     # Forward buttons
+            r'\bhome\b',        # Home buttons
+            r'\bup\b',          # Up buttons
+            r'\bdown\b',        # Down buttons
+            r'\bleft\b',        # Left buttons
+            r'\bright\b',       # Right buttons
+            r'\bnext\b',        # Next buttons (unless "Next/Continue")
+            r'\bprev\b',        # Previous buttons
+            r'\bprevious\b',    # Previous buttons
+            r'\bfirst\b',       # First buttons
+            r'\blast\b',        # Last buttons
+            r'\bbegin\b',       # Begin buttons
+            r'\bend\b',         # End buttons
+            r'\bstart\b',       # Start buttons (unless "Start Continue")
+            r'\bfinish\b',      # Finish buttons
+            r'\bcomplete\b',    # Complete buttons
+            r'\bdone\b',        # Done buttons
+            r'\bok\b',          # OK buttons
+            r'\byes\b',         # Yes buttons
+            r'\bno\b',          # No buttons
+            r'\baccept\b',      # Accept buttons
+            r'\bdecline\b',     # Decline buttons
+            r'\bapprove\b',     # Approve buttons
+            r'\breject\b',      # Reject buttons
+            r'\bconfirm\b',     # Confirm buttons
+            r'\bsubmit\b',      # Submit buttons
+            r'\bsend\b',        # Send buttons
+            r'\breceive\b',     # Receive buttons
+            r'\bdownload\b',    # Download buttons
+            r'\bupload\b',      # Upload buttons
+            r'\binstall\b',     # Install buttons
+            r'\buninstall\b',   # Uninstall buttons
+            r'\bupdate\b',      # Update buttons
+            r'\bupgrade\b',     # Upgrade buttons
+            r'\bconfig\b',      # Config buttons
+            r'\bconfigure\b',   # Configure buttons
+            r'\bsetup\b',       # Setup buttons
+            r'\binitialize\b',  # Initialize buttons
+            r'\binit\b',        # Init buttons
+            r'\benable\b',      # Enable buttons
+            r'\bdisable\b',     # Disable buttons
+            r'\bactivate\b',    # Activate buttons
+            r'\bdeactivate\b',  # Deactivate buttons
+            r'\btoggle\b',      # Toggle buttons
+            r'\bswitch\b',      # Switch buttons
+            r'\bchange\b',      # Change buttons
+            r'\bmodify\b',      # Modify buttons
+            r'\bedit\b',        # Edit buttons
+            r'\bupdate\b',      # Update buttons
+            r'\brenew\b',       # Renew buttons
+            r'\brefresh\b',     # Refresh buttons
+            r'\brestore\b',     # Restore buttons
+            r'\brevert\b',      # Revert buttons
+            r'\breset\b',       # Reset buttons
+            r'\brestart\b',     # Restart buttons
+            r'\breboot\b',      # Reboot buttons
+            r'\bshutdown\b',    # Shutdown buttons
+            r'\blogout\b',      # Logout buttons
+            r'\bsignout\b',     # Sign out buttons
+            r'\blogin\b',       # Login buttons
+            r'\bsignin\b',      # Sign in buttons
+            r'\bregister\b',    # Register buttons
+            r'\bsignup\b',      # Sign up buttons
+            r'\bsubscribe\b',   # Subscribe buttons
+            r'\bunsubscribe\b', # Unsubscribe buttons
+        ]
+        
+        for button in buttons:
+            # First check if this is a search field or top element
+            if (image_width > 0 and image_height > 0 and 
+                self._is_search_field_or_top_element(button, image_width, 
+                                                   image_height)):
+                self.logger.debug(f"Excluding button at ({button.x}, "
+                                f"{button.y}) - appears to be search field "
+                                "or top element")
+                continue
+            
+            # For Continue buttons, prefer those in the chat panel area
+            if (image_width > 0 and image_height > 0):
+                in_chat_area = self._is_in_chat_panel_area(
+                    button.x, button.y, image_width, image_height)
+                if not in_chat_area:
+                    # If it's not in chat area and has low confidence, skip it
+                    if button.confidence < 0.7:
+                        self.logger.debug(f"Excluding low-confidence button "
+                                        f"outside chat area: ({button.x}, "
+                                        f"{button.y}) conf={button.confidence}")
+                        continue
+            
+            if not button.text:
+                # No text - could be a valid Continue button, keep it
+                # But only if it's in a reasonable location
+                if (image_width > 0 and image_height > 0 and 
+                    not self._is_in_chat_panel_area(button.x, button.y, 
+                                                   image_width, image_height)):
+                    self.logger.debug(f"Excluding no-text button outside "
+                                    f"chat area: ({button.x}, {button.y})")
+                    continue
+                filtered.append(button)
+                continue
+                
+            text_lower = button.text.lower().strip()
+            
+            # Skip buttons with excluded patterns
+            is_excluded = False
+            for pattern in exclude_patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    self.logger.debug(f"Excluding button '{button.text}' - "
+                                    f"matches pattern '{pattern}'")
+                    is_excluded = True
+                    break
+            
+            if not is_excluded:
+                # Check if it has continue-like text or is a good candidate
+                if (self._matches_continue_pattern(text_lower) or 
+                    not text_lower or  # No text detected
+                    text_lower in ['', ' ', 'button', 'btn']):
+                    filtered.append(button)
+                else:
+                    self.logger.debug(f"Excluding button '{button.text}' - "
+                                    "doesn't match continue patterns")
+        
+        self.logger.debug(f"Filtered {len(buttons)} buttons down to "
+                        f"{len(filtered)} Continue candidates")
+        return filtered

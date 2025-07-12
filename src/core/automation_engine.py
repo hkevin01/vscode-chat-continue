@@ -407,16 +407,38 @@ class AutomationEngine:
             return has_chat_indicator
         
         return True
-    
-    async def _click_buttons(self, buttons: List[ButtonLocation], window: VSCodeWindow) -> None:
+
+    async def _click_buttons(self, buttons: List[ButtonLocation],
+                             window: VSCodeWindow) -> None:
         """Click detected continue buttons.
         
         Args:
             buttons: List of button locations to click
             window: The window containing the buttons
         """
-        max_clicks = self.config_manager.get('automation.max_clicks_per_window', 3)
-        click_interval = self.config_manager.get('automation.click_interval', 0.5)
+        max_clicks = self.config_manager.get(
+            'automation.max_clicks_per_window', 3)
+        click_interval = self.config_manager.get(
+            'automation.click_interval', 0.5)
+        auto_focus = self.config_manager.get(
+            'automation.auto_focus_windows', True)
+        
+        # Focus the window before clicking if auto_focus is enabled
+        if auto_focus and not self.config_manager.is_dry_run():
+            self.logger.info(f"Bringing window '{window.title}' into focus "
+                             "before clicking...")
+            focus_result = self.focus_manager.focus_window(window)
+            
+            if focus_result.success:
+                self.logger.info(f"Successfully focused window using "
+                                 f"{focus_result.method}")
+                # Give the window a moment to gain focus
+                await asyncio.sleep(0.3)
+            else:
+                self.logger.warning(f"Failed to focus window: "
+                                    f"{focus_result.error}")
+                self.logger.info("Proceeding with clicks anyway - they may "
+                                 "fail if window lacks focus")
         
         # Limit number of clicks per window
         buttons_to_click = buttons[:max_clicks]
@@ -424,16 +446,20 @@ class AutomationEngine:
         for i, button in enumerate(buttons_to_click):
             try:
                 if self.config_manager.is_dry_run():
-                    self.logger.info(f"DRY RUN: Would click button at ({button.center_x}, {button.center_y}) "
-                                   f"in window '{window.title}' using method {button.method}")
+                    self.logger.info(
+                        f"DRY RUN: Would click button at "
+                        f"({button.center_x}, {button.center_y}) in window "
+                        f"'{window.title}' using method {button.method}")
                     continue
                 
-                self.logger.info(f"Clicking continue button at ({button.center_x}, {button.center_y}) "
-                               f"in window '{window.title}'")
+                self.logger.info(
+                    f"Clicking continue button at "
+                    f"({button.center_x}, {button.center_y}) in window "
+                    f"'{window.title}'")
                 
                 # Perform the click
                 result = self.click_automator.click(
-                    button.center_x, 
+                    button.center_x,
                     button.center_y,
                     restore_position=True
                 )
@@ -442,9 +468,11 @@ class AutomationEngine:
                 
                 if result.success:
                     self.stats['clicks_successful'] += 1
-                    self.logger.info(f"Successfully clicked button using {result.method}")
+                    self.logger.info(f"Successfully clicked button using "
+                                     f"{result.method}")
                 else:
-                    self.logger.warning(f"Failed to click button: {result.error}")
+                    self.logger.warning(f"Failed to click button: "
+                                        f"{result.error}")
                 
                 # Wait between clicks
                 if i < len(buttons_to_click) - 1:

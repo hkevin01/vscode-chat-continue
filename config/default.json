@@ -29,6 +29,7 @@
     "safety_pause": 2.0,
     "preserve_focus": true,
     "window_activation_delay": 0.1,
+    "auto_focus_windows": true,
     "click_offset": {
       "x": 0,
       "y": 0
