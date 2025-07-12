@@ -9,6 +9,7 @@ from src.core.button_finder import ButtonFinder, ButtonLocation
 from src.core.click_automator import ClickAutomator
 from src.core.config_manager import ConfigManager
 from src.core.window_detector import VSCodeWindow, WindowDetector
+from src.core.window_focus_manager import WindowFocusManager
 from src.utils.audio_suppressor import disable_audio_suppression, enable_audio_suppression
 from src.utils.screen_capture import ScreenCapture
 
@@ -45,6 +46,7 @@ class AutomationEngine:
             move_duration=config_manager.get('automation.move_duration', 0.2)
         )
         self.screen_capture = ScreenCapture()
+        self.focus_manager = WindowFocusManager()
         
         # Performance monitoring
         self.performance_metrics = {
