@@ -148,7 +148,7 @@ class ButtonFinder:
     
     def _find_buttons_ocr(self, image: Image.Image, 
                          window_x: int, window_y: int) -> List[ButtonLocation]:
-        """Find buttons using OCR text detection.
+        """Find buttons using OCR text detection with preprocessing.
         
         Args:
             image: PIL Image to search in
@@ -160,54 +160,43 @@ class ButtonFinder:
         """
         buttons = []
         
+        if not HAS_TESSERACT:
+            return buttons
+        
         try:
-            # Try primary OCR configuration (single word mode)
-            try:
-                ocr_data = pytesseract.image_to_data(image, config=self.tesseract_config, 
-                                                   output_type=pytesseract.Output.DICT)
-                self.logger.debug("Using PSM 8 (single word mode) for OCR")
-            except Exception as e:
-                self.logger.debug(f"PSM 8 failed: {e}, trying backup configuration")
-                # Fallback to block text mode
-                ocr_data = pytesseract.image_to_data(image, config=self.tesseract_config_backup, 
-                                                   output_type=pytesseract.Output.DICT)
-                self.logger.debug("Using PSM 6 (block text mode) for OCR")
+            # Get preprocessed versions of the image
+            processed_images = self._preprocess_for_ocr(image)
+            self.logger.debug(f"Testing OCR on {len(processed_images)} processed versions")
             
-            # Process each detected text element
-            for i in range(len(ocr_data['text'])):
-                text = ocr_data['text'][i].strip().lower()
-                confidence = float(ocr_data['conf'][i])
-                
-                # Debug: log all detected text with lower threshold
-                if text and confidence > 5:
-                    self.logger.debug(f"OCR detected: '{text}' (confidence: {confidence})")
-                
-                # Skip low confidence or empty text (very low threshold for debugging)
-                if confidence < 10 or not text:
-                    continue
-                
-                # Check if text matches continue patterns
-                if self._matches_continue_pattern(text):
-                    self.logger.info(f"Found Continue button: '{text}' (confidence: {confidence})")
-                    x = ocr_data['left'][i] + window_x
-                    y = ocr_data['top'][i] + window_y
-                    width = ocr_data['width'][i]
-                    height = ocr_data['height'][i]
-                    
-                    # Expand the button area slightly for better clicking
-                    padding = 15  # Increased padding for easier clicking
-                    button = ButtonLocation(
-                        x=max(0, x - padding),
-                        y=max(0, y - padding),
-                        width=width + 2 * padding,
-                        height=height + 2 * padding,
-                        confidence=confidence / 100.0,  # Normalize to 0-1
-                        method="ocr",
-                        text=text
-                    )
-                    
-                    buttons.append(button)
-                    
+            # Try different OCR configurations
+            ocr_configs = [
+                ('PSM 6 Block', '--oem 3 --psm 6'),
+                ('PSM 8 Word', '--oem 3 --psm 8'),
+                ('PSM 11 Sparse', '--oem 3 --psm 11'),
+            ]
+            
+            # Test each combination of preprocessing and OCR config
+            for proc_idx, proc_image in enumerate(processed_images):
+                for config_name, config in ocr_configs:
+                    try:
+                        result = pytesseract.image_to_data(proc_image, config=config,
+                                                         output_type=pytesseract.Output.DICT)
+                        
+                        # Count words to see if this preprocessing/config combo works
+                        word_count = sum(1 for i, text in enumerate(result['text'])
+                                       if len(text.strip()) > 1 and result['conf'][i] > 10)
+                        
+                        if word_count > 0:
+                            self.logger.debug(f"Preprocessing {proc_idx} + {config_name}: {word_count} words")
+                            
+                            # Process the OCR results
+                            found_buttons = self._process_ocr_results(result, window_x, window_y, 
+                                                                    f"{config_name}_proc{proc_idx}")
+                            buttons.extend(found_buttons)
+                            
+                    except Exception as e:
+                        self.logger.debug(f"OCR error with {config_name} on preprocessing {proc_idx}: {e}")
+                        continue
         except Exception as e:
             self.logger.debug(f"OCR detection error: {e}")
         
@@ -619,49 +608,57 @@ class ButtonFinder:
                 abs(pixel[2] - target[2]) < tolerance)
     
     def _preprocess_for_ocr(self, image: Image.Image) -> List[Image.Image]:
-        """Preprocess image for better OCR detection.
+        """Preprocess image to improve OCR detection.
         
         Args:
             image: Original PIL Image
             
         Returns:
-            List of processed images to try for OCR
+            List of preprocessed images to try OCR on
         """
         processed_images = [image]  # Always include original
         
+        if not HAS_OPENCV:
+            return processed_images
+            
         try:
-            if HAS_PIL:
-                # Convert to grayscale
-                gray = image.convert('L')
-                processed_images.append(gray)
-                
-                # High contrast (good for dark themes)
-                from PIL import ImageEnhance
-                enhancer = ImageEnhance.Contrast(gray)
-                high_contrast = enhancer.enhance(2.0)
-                processed_images.append(high_contrast)
-                
-                # Inverted (white text on black becomes black on white)
-                from PIL import ImageOps
-                inverted = ImageOps.invert(gray)
-                processed_images.append(inverted)
-                
-                # Inverted high contrast
-                inverted_contrast = ImageEnhance.Contrast(inverted).enhance(2.0)
-                processed_images.append(inverted_contrast)
-                
-                # Threshold (binary black/white)
-                import numpy as np
-                arr = np.array(gray)
-                threshold = np.mean(arr)
-                binary = Image.fromarray((arr > threshold) * 255)
-                processed_images.append(binary)
-                
+            # Convert PIL to OpenCV
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            opencv_image = np.array(image)
+            opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2BGR)
+            gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
+            
+            # 1. High contrast binary threshold
+            _, high_thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+            processed_images.append(Image.fromarray(high_thresh))
+            
+            # 2. Inverted binary (white text on dark background)
+            _, inv_thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+            processed_images.append(Image.fromarray(inv_thresh))
+            
+            # 3. Adaptive threshold for varying lighting
+            adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                           cv2.THRESH_BINARY, 11, 2)
+            processed_images.append(Image.fromarray(adaptive))
+            
+            # 4. Enhance contrast and then threshold
+            enhanced = cv2.convertScaleAbs(gray, alpha=2.0, beta=50)
+            _, enh_thresh = cv2.threshold(enhanced, 150, 255, cv2.THRESH_BINARY)
+            processed_images.append(Image.fromarray(enh_thresh))
+            
+            # 5. Edge detection with dilation (for button outlines)
+            edges = cv2.Canny(gray, 50, 150)
+            kernel = np.ones((2, 2), np.uint8)
+            dilated = cv2.dilate(edges, kernel, iterations=1)
+            processed_images.append(Image.fromarray(dilated))
+            
         except Exception as e:
             self.logger.debug(f"Image preprocessing error: {e}")
-            
+        
         return processed_images
-    
+
     def _try_multiple_ocr_configs(self, image: Image.Image) -> Dict[str, Any]:
         """Try multiple OCR configurations and return the best result.
         
