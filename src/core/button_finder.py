@@ -111,29 +111,47 @@ class ButtonFinder:
         buttons = []
         
         try:
-            # Method 1: OCR-based text detection
+            # Method 1: Specific Continue button detection (HIGHEST PRIORITY)
+            specific_buttons = self._detect_specific_continue_button(image, window_x, window_y)
+            buttons.extend(specific_buttons)
+            self.logger.debug(f"Specific Continue detection found {len(specific_buttons)} buttons")
+            
+            # If we found high-confidence specific buttons, prioritize them heavily
+            if specific_buttons:
+                high_conf_specific = [b for b in specific_buttons if b.confidence > 0.9]
+                if high_conf_specific:
+                    self.logger.info(f"🎯 Found {len(high_conf_specific)} high-confidence Continue buttons!")
+                    # Return immediately if we have very confident detections
+                    return self._deduplicate_buttons(high_conf_specific)
+            
+            # Method 2: OCR-based text detection
             if HAS_TESSERACT:
                 ocr_buttons = self._find_buttons_ocr(image, window_x, window_y)
                 buttons.extend(ocr_buttons)
                 self.logger.debug(f"OCR found {len(ocr_buttons)} buttons")
             
-            # Method 2: Template matching
+            # Method 3: Template matching
             if HAS_OPENCV:
                 template_buttons = self._find_buttons_template(image, window_x, window_y)
                 buttons.extend(template_buttons)
                 self.logger.debug(f"Template matching found {len(template_buttons)} buttons")
             
-            # Method 3: Color-based detection
+            # Method 4: Blue button detection (high priority for VS Code)
+            blue_buttons = self._find_blue_buttons(image, window_x, window_y)
+            buttons.extend(blue_buttons)
+            self.logger.debug(f"Blue button detection found {len(blue_buttons)} buttons")
+            
+            # Method 4: Color-based detection
             color_buttons = self._find_buttons_color(image, window_x, window_y)
             buttons.extend(color_buttons)
             self.logger.debug(f"Color detection found {len(color_buttons)} buttons")
             
-            # Method 4: Blue rectangle fallback (when OCR unavailable)
+            # Method 5: Blue rectangle fallback (when OCR unavailable)
             if not HAS_TESSERACT:
                 self.logger.info("OCR not available, using blue rectangle fallback")
-                blue_buttons = self._find_blue_rectangles(image, window_x, window_y)
-                buttons.extend(blue_buttons)
-                self.logger.debug(f"Blue rectangle detection found {len(blue_buttons)} buttons")
+                fallback_buttons = self._find_blue_rectangles(image, window_x, window_y)
+                buttons.extend(fallback_buttons)
+                self.logger.debug(f"Blue rectangle detection found {len(fallback_buttons)} buttons")
             
             # Remove duplicates and sort by confidence
             buttons = self._deduplicate_buttons(buttons)
@@ -699,3 +717,314 @@ class ButtonFinder:
                 self.logger.debug(f"OCR config {name} failed: {e}")
                 
         return best_result or {'text': [], 'conf': [], 'left': [], 'top': [], 'width': [], 'height': []}
+    
+    def _find_blue_buttons(self, image: Image.Image, window_x: int, window_y: int) -> List[ButtonLocation]:
+        """Find blue buttons with white text (like VS Code Continue buttons).
+        
+        Args:
+            image: PIL Image to search
+            window_x: Window x offset
+            window_y: Window y offset
+            
+        Returns:
+            List of potential blue button locations
+        """
+        if not HAS_OPENCV:
+            return []
+            
+        buttons = []
+        
+        try:
+            # Convert PIL to OpenCV
+            cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            
+            # Convert to HSV for better color detection
+            hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+            
+            # Define blue color range for VS Code buttons
+            # VS Code blue is typically around hue 210-220
+            lower_blue = np.array([100, 100, 100])  # Lower HSV threshold
+            upper_blue = np.array([130, 255, 255])  # Upper HSV threshold
+            
+            # Create mask for blue areas
+            blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+            
+            # Find contours of blue areas
+            contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for contour in contours:
+                # Get bounding rectangle
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                # Filter for button-like dimensions
+                aspect_ratio = w / h if h > 0 else 0
+                area = cv2.contourArea(contour)
+                
+                # Typical Continue button: width 60-120px, height 25-40px
+                if (50 < w < 150 and 20 < h < 50 and 
+                    1.5 < aspect_ratio < 5 and area > 800):
+                    
+                    # Extract the button region for OCR
+                    button_region = cv_image[y:y+h, x:x+w]
+                    
+                    # Convert to grayscale for better OCR
+                    gray_button = cv2.cvtColor(button_region, cv2.COLOR_BGR2GRAY)
+                    
+                    # Invert colors (white text on blue background -> black text on white)
+                    inverted = 255 - gray_button
+                    
+                    # Enhance contrast
+                    enhanced = cv2.convertScaleAbs(inverted, alpha=2.0, beta=50)
+                    
+                    # Try OCR on the enhanced button region
+                    if HAS_TESSERACT:
+                        try:
+                            # Use single word mode for button text
+                            text = pytesseract.image_to_string(
+                                enhanced, 
+                                config='--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+                            ).strip().lower()
+                            
+                            if text and any(pattern in text for pattern in ['continue', 'cont', 'contin']):
+                                confidence = 0.9  # High confidence for blue button with Continue text
+                                
+                                button = ButtonLocation(
+                                    x=x,
+                                    y=y,
+                                    width=w,
+                                    height=h,
+                                    center_x=x + w // 2,
+                                    center_y=y + h // 2,
+                                    confidence=confidence,
+                                    text=text,
+                                    method="blue_button_detection"
+                                )
+                                buttons.append(button)
+                                self.logger.debug(f"Found blue Continue button: '{text}' at ({x}, {y})")
+                                
+                        except Exception as ocr_error:
+                            self.logger.debug(f"OCR failed for blue button at ({x}, {y}): {ocr_error}")
+                    
+                    else:
+                        # If no OCR, still consider it a candidate based on color and shape
+                        button = ButtonLocation(
+                            x=x,
+                            y=y,
+                            width=w,
+                            height=h,
+                            center_x=x + w // 2,
+                            center_y=y + h // 2,
+                            confidence=0.6,  # Lower confidence without text verification
+                            text="blue_button",
+                            method="blue_color_detection"
+                        )
+                        buttons.append(button)
+                        self.logger.debug(f"Found blue button candidate at ({x}, {y})")
+                        
+        except Exception as e:
+            self.logger.debug(f"Blue button detection failed: {e}")
+        
+        return buttons
+
+    def _process_ocr_results(self, result, window_x: int, window_y: int, method: str) -> List[ButtonLocation]:
+        """Process OCR results to find Continue buttons.
+        
+        Args:
+            result: Tesseract OCR result dictionary
+            window_x: Window X offset
+            window_y: Window Y offset
+            method: Detection method name
+            
+        Returns:
+            List of ButtonLocation objects
+        """
+        buttons = []
+        
+        try:
+            # Look for text containing "continue" or similar patterns
+            for i, text in enumerate(result['text']):
+                if not text.strip():
+                    continue
+                
+                # Check if this text matches continue patterns
+                if self._matches_continue_pattern(text):
+                    confidence = result['conf'][i] / 100.0 if result['conf'][i] > 0 else 0.1
+                    
+                    # Only consider high-confidence detections
+                    if confidence > 0.3:
+                        x = result['left'][i]
+                        y = result['top'][i]
+                        w = result['width'][i]
+                        h = result['height'][i]
+                        
+                        # Filter out very small or very large detections
+                        if 20 < w < 200 and 15 < h < 60:
+                            button = ButtonLocation(
+                                x=x + window_x,
+                                y=y + window_y,
+                                width=w,
+                                height=h,
+                                confidence=confidence,
+                                method=method,
+                                text=text.strip()
+                            )
+                            buttons.append(button)
+                            self.logger.debug(f"Found '{text}' button at ({x}, {y}) confidence: {confidence:.2f}")
+        
+        except Exception as e:
+            self.logger.debug(f"Error processing OCR results: {e}")
+        
+        return buttons
+
+    def _is_in_chat_panel_area(self, x: int, y: int, image_width: int, image_height: int) -> bool:
+        """Check if coordinates are likely in the chat panel area.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            image_width: Image width
+            image_height: Image height
+            
+        Returns:
+            True if likely in chat panel
+        """
+        # VS Code chat panel is typically on the right side
+        # Usually takes up 25-40% of the width
+        chat_panel_left = int(image_width * 0.6)  # Right 40% of screen
+        
+        # Continue button is typically in bottom area of chat panel
+        chat_panel_bottom = int(image_height * 0.8)  # Bottom 20% of screen
+        
+        return x > chat_panel_left and y > chat_panel_bottom
+
+    def _filter_chat_panel_buttons(self, buttons: List[ButtonLocation], 
+                                 image_width: int, image_height: int) -> List[ButtonLocation]:
+        """Filter buttons to only include those likely in the chat panel.
+        
+        Args:
+            buttons: List of detected buttons
+            image_width: Image width
+            image_height: Image height
+            
+        Returns:
+            Filtered list of buttons
+        """
+        filtered = []
+        
+        for button in buttons:
+            if self._is_in_chat_panel_area(button.x, button.y, image_width, image_height):
+                # Boost confidence for buttons in chat panel area
+                button.confidence = min(1.0, button.confidence + 0.2)
+                filtered.append(button)
+                self.logger.debug(f"Button at ({button.x}, {button.y}) is in chat panel area")
+            else:
+                self.logger.debug(f"Button at ({button.x}, {button.y}) NOT in chat panel area")
+        
+        return filtered
+    
+    def _detect_specific_continue_button(self, image: Image.Image, window_x: int, window_y: int) -> List[ButtonLocation]:
+        """Detect the specific blue Continue button with white text.
+        
+        This method is optimized for the exact Continue button appearance shown in VS Code Copilot.
+        
+        Args:
+            image: PIL Image to search
+            window_x: Window x offset
+            window_y: Window y offset
+            
+        Returns:
+            List of detected Continue button locations
+        """
+        if not HAS_OPENCV:
+            return []
+            
+        buttons = []
+        
+        try:
+            # Convert PIL to OpenCV
+            cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            
+            # Convert to HSV for better blue detection
+            hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+            
+            # Define blue color range for the specific Continue button
+            # The button appears to be a medium blue (#007ACC-like color)
+            lower_blue = np.array([95, 80, 80])   # Lower HSV threshold for VS Code blue
+            upper_blue = np.array([125, 255, 255]) # Upper HSV threshold for VS Code blue
+            
+            # Create mask for blue regions
+            blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+            
+            # Find contours of blue regions
+            contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for contour in contours:
+                # Get bounding rectangle
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                # Filter by size - Continue button is typically 60-80px wide, 25-35px tall
+                aspect_ratio = w / h if h > 0 else 0
+                area = cv2.contourArea(contour)
+                
+                if (50 < w < 100 and 20 < h < 45 and 
+                    1.5 < aspect_ratio < 4 and area > 800):
+                    
+                    # Extract the button region for OCR verification
+                    button_region = cv_image[y:y+h, x:x+w]
+                    
+                    # Convert to grayscale for OCR
+                    gray_button = cv2.cvtColor(button_region, cv2.COLOR_BGR2GRAY)
+                    
+                    # Invert colors to make white text black for better OCR
+                    inverted = 255 - gray_button
+                    
+                    # Enhance contrast
+                    enhanced = cv2.convertScaleAbs(inverted, alpha=2.5, beta=30)
+                    
+                    # Try OCR on the enhanced button region
+                    if HAS_TESSERACT:
+                        try:
+                            # Use single word mode optimized for button text
+                            config = '--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+                            text = pytesseract.image_to_string(enhanced, config=config).strip().lower()
+                            
+                            # Check for Continue text with some flexibility
+                            if (text and any(pattern in text for pattern in 
+                                           ['continue', 'contin', 'cont', 'tinue'])):
+                                
+                                confidence = 0.95  # Very high confidence for specific detection
+                                
+                                button = ButtonLocation(
+                                    x=x + window_x,
+                                    y=y + window_y,
+                                    width=w,
+                                    height=h,
+                                    confidence=confidence,
+                                    text=text,
+                                    method="specific_continue_button"
+                                )
+                                buttons.append(button)
+                                self.logger.info(f"🎯 Found specific Continue button: '{text}' at ({x}, {y})")
+                                
+                        except Exception as ocr_error:
+                            self.logger.debug(f"OCR failed for specific blue button at ({x}, {y}): {ocr_error}")
+                    
+                    else:
+                        # If no OCR, still consider it a strong candidate based on color and shape
+                        if self._is_in_chat_panel_area(x, y, image.width, image.height):
+                            button = ButtonLocation(
+                                x=x + window_x,
+                                y=y + window_y,
+                                width=w,
+                                height=h,
+                                confidence=0.8,  # High confidence for color/shape match in chat area
+                                text="blue_continue_candidate",
+                                method="specific_blue_detection"
+                            )
+                            buttons.append(button)
+                            self.logger.info(f"🔵 Found blue Continue button candidate at ({x}, {y})")
+                        
+        except Exception as e:
+            self.logger.debug(f"Specific Continue button detection failed: {e}")
+        
+        return buttons
