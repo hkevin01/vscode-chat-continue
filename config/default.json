@@ -35,7 +35,16 @@
       "y": 0
     },
     "enable_audio_feedback": false,
-    "dry_run": false
+    "dry_run": false,
+    "enable_chat_fallback": true,
+    "chat_field_coordinates": {
+      "x": 1725,
+      "y": 1993
+    },
+    "continue_button_coordinates": {
+      "x": 1713,
+      "y": 1723
+    }
   },
   "audio": {
     "enabled": false,

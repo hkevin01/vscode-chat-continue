@@ -13,12 +13,12 @@ except ImportError:
     HAS_PYAUTOGUI = False
 
 try:
-    from pynput.mouse import Button
-    from pynput.mouse import Controller as MouseController
-    from pynput.mouse import Listener as MouseListener
     # Add keyboard support for chat typing fallback
     from pynput.keyboard import Controller as KeyboardController
     from pynput.keyboard import Key
+    from pynput.mouse import Button
+    from pynput.mouse import Controller as MouseController
+    from pynput.mouse import Listener as MouseListener
     HAS_PYNPUT = True
 except ImportError:
     HAS_PYNPUT = False

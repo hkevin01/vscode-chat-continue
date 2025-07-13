@@ -422,6 +422,9 @@ class AutomationEngine:
             # Click buttons if not in dry run mode
             if buttons:
                 await self._click_buttons(buttons, window)
+            else:
+                # No buttons found - try chat typing fallback
+                await self._try_chat_typing_fallback(window)
                 
         except Exception as e:
             self.logger.error(f"Error processing window {window}: {e}", exc_info=True)
@@ -552,3 +555,56 @@ class AutomationEngine:
             'clicks_successful': 0,
             'errors': 0
         }
+    
+    async def _try_chat_typing_fallback(self, window: VSCodeWindow) -> None:
+        """Try typing 'continue' in chat field when no buttons found.
+        
+        Args:
+            window: The VS Code window to try chat typing in
+        """
+        if self.config_manager.is_dry_run():
+            self.logger.info("DRY RUN: Would try chat typing fallback")
+            return
+            
+        # Check if chat typing fallback is enabled
+        if not self.config_manager.get('automation.enable_chat_fallback', True):
+            self.logger.debug("Chat typing fallback is disabled")
+            return
+            
+        try:
+            self.logger.info("🔤 No Continue buttons found - trying chat typing fallback")
+            
+            # User-specific chat field coordinates
+            # X: 1725, Y: 1993 (chat typing field location)
+            chat_x = 1725
+            chat_y = 1993
+            
+            # Focus the window first
+            auto_focus = self.config_manager.get('automation.auto_focus_windows', True)
+            if auto_focus:
+                self.logger.info(f"Focusing window '{window.title}' for chat typing...")
+                focus_result = self.focus_manager.focus_window(window)
+                
+                if focus_result.success:
+                    self.logger.info(f"Successfully focused window using {focus_result.method}")
+                    await asyncio.sleep(0.3)  # Give window time to gain focus
+                else:
+                    self.logger.warning(f"Failed to focus window: {focus_result.error}")
+            
+            # Attempt to click chat field and type 'continue'
+            self.logger.info(f"Clicking chat field at ({chat_x}, {chat_y}) and typing 'continue'")
+            success = self.click_automator.click_and_type_continue(chat_x, chat_y)
+            
+            if success:
+                self.logger.info("✅ Successfully typed 'continue' in chat field")
+                self.stats['clicks_attempted'] += 1
+                self.stats['clicks_successful'] += 1
+                self.stats['fallback_activations'] += 1
+            else:
+                self.logger.warning("❌ Chat typing fallback failed")
+                self.stats['clicks_attempted'] += 1
+                self.stats['errors'] += 1
+                
+        except Exception as e:
+            self.logger.error(f"Error in chat typing fallback: {e}")
+            self.stats['errors'] += 1
