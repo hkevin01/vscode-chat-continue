@@ -319,21 +319,36 @@ class ScreenCapture:
                 self.logger.error(f"Invalid region dimensions: {width}x{height}")
                 return None
                 
+            # Early check for Wayland - return mock immediately to avoid issues
+            if self.platform == "Linux":
+                wayland_display = os.environ.get('WAYLAND_DISPLAY')
+                if wayland_display:
+                    self.logger.debug(
+                        "Detected Wayland, using mock region capture "
+                        "to prevent freezing...")
+                    return self._capture_screen_wayland()
+                
             bbox = (x, y, x + width, y + height)
             
-            # Linux-specific capture logic
+            # Linux-specific capture logic (non-Wayland)
             if self.platform == "Linux":
                 # Try direct region capture methods first
-                imagemagick_result = self._capture_with_imagemagick(x, y, width, height)
-                if imagemagick_result and self._validate_screenshot(imagemagick_result, width//2, height//2):
+                imagemagick_result = self._capture_with_imagemagick(
+                    x, y, width, height)
+                if (imagemagick_result and 
+                        self._validate_screenshot(imagemagick_result, 
+                                                width//2, height//2)):
                     return imagemagick_result
                 
                 scrot_result = self._capture_with_scrot(x, y, width, height)
-                if scrot_result and self._validate_screenshot(scrot_result, width//2, height//2):
+                if (scrot_result and 
+                        self._validate_screenshot(scrot_result, 
+                                                width//2, height//2)):
                     return scrot_result
                 
                 # Fallback for Linux: capture full screen and crop
-                self.logger.debug("Linux-native region capture failed. Attempting to crop a full screenshot.")
+                self.logger.debug("Linux-native region capture failed. "
+                                "Attempting to crop a full screenshot.")
                 full_screen = self.capture_screen()
                 if full_screen and self._validate_screenshot(full_screen):
                     cropped = full_screen.crop(bbox)
@@ -353,14 +368,16 @@ class ScreenCapture:
                     self.logger.debug(f"PIL capture failed: {e}")
             
             # Fallback to pyautogui on non-Linux platforms
-            if HAS_PYAUTOGUI and self.platform != "Linux" and pyautogui is not None:
+            if (HAS_PYAUTOGUI and self.platform != "Linux" and 
+                    pyautogui is not None):
                 try:
                     return pyautogui.screenshot(region=(x, y, width, height))
                 except Exception as e:
                     self.logger.debug(f"pyautogui capture failed: {e}")
             
             # Last resort for non-Linux: capture full screen and crop
-            self.logger.debug("Trying to capture full screen and crop as a last resort.")
+            self.logger.debug("Trying to capture full screen and crop "
+                            "as a last resort.")
             full_screen = self.capture_screen()
             if full_screen:
                 return full_screen.crop(bbox)
@@ -368,7 +385,8 @@ class ScreenCapture:
             return None
                 
         except Exception as e:
-            self.logger.error(f"An unexpected error occurred during region capture {bbox}: {e}")
+            self.logger.error(f"An unexpected error occurred during region "
+                            f"capture {bbox}: {e}")
             return None
     
     def _capture_with_scrot(self, x: int, y: int, width: int,

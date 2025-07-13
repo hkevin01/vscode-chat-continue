@@ -1,8 +1,62 @@
-# Test Directory Structure
+# Testing Guide
 
-This directory contains all test files organized into logical subdirectories for better maintainability.
+Comprehensive testing strategy for the VS Code Chat Continue automation project.
 
-## Directory Structure
+## 🧪 Test Structure
+
+```
+tests/
+├── unit/                     # Unit tests for individual components
+├── integration/             # End-to-end integration tests  
+├── performance/            # Performance and benchmark tests
+├── conftest.py             # Pytest configuration and fixtures
+└── README.md              # This file
+```
+
+## 🚀 Quick Testing
+
+### Run All Tests
+```bash
+# Full test suite
+python -m pytest tests/ -v
+
+# With coverage report
+python -m pytest tests/ --cov=src --cov-report=html
+```
+
+### Test Categories
+
+#### Integration Tests (Moved from root)
+All test files have been organized into proper directories:
+- **`test_*.py`**: Core automation tests
+- **`debug_*.py`**: Interactive debugging tools  
+- **Performance tests**: Moved to `performance/` directory
+
+#### Running Specific Tests
+```bash
+# Run integration tests
+python -m pytest tests/integration/ -v
+
+# Run a specific test
+python tests/integration/test_actual_detection.py
+
+# Run performance benchmarks
+python -m pytest tests/performance/ -v
+```
+
+## 📊 Test Organization
+
+### Previously Scattered Files (Now Organized)
+- ✅ `test_*.py` → `tests/integration/`
+- ✅ `debug_*.py` → `tests/integration/`
+- ✅ `performance_*.py` → `tests/performance/`
+- ✅ `*_test.py` → `tests/integration/`
+
+### Benefits of New Structure
+- 🎯 **Clear Separation**: Unit vs Integration vs Performance
+- 📁 **Clean Root**: No test files cluttering the main directory
+- 🚀 **Better CI**: Structured test execution in pipelines
+- 📖 **Easier Navigation**: Logical grouping of related tests
 
 ### `/tests/unit/`
 Unit tests for individual components and modules:

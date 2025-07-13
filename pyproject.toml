@@ -7,13 +7,9 @@ name = "vscode-chat-continue"
 version = "1.0.0"
 description = "Automated VS Code Copilot Continue button detection and clicking tool"
 readme = "README.md"
-license = {file = "LICENSE"}
-authors = [
-    {name = "Kevin", email = "kevin@example.com"}
-]
-maintainers = [
-    {name = "Kevin", email = "kevin@example.com"}
-]
+license = { file = "LICENSE" }
+authors = [{ name = "Kevin", email = "kevin@example.com" }]
+maintainers = [{ name = "Kevin", email = "kevin@example.com" }]
 keywords = ["vscode", "automation", "copilot", "gui", "productivity"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -65,11 +61,7 @@ test = [
     "pytest-qt>=4.2.0",
     "pytest-mock>=3.11.0",
 ]
-docs = [
-    "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=1.3.0",
-    "myst-parser>=2.0.0",
-]
+docs = ["sphinx>=7.0.0", "sphinx-rtd-theme>=1.3.0", "myst-parser>=2.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/username/vscode-chat-continue"
@@ -91,22 +83,61 @@ where = ["src"]
 # Testing configuration
 [tool.pytest.ini_options]
 minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
 addopts = [
-    "-ra",
+    "-v",
     "--strict-markers",
     "--strict-config",
+    "--tb=short",
     "--cov=src",
     "--cov-report=html",
     "--cov-report=term-missing",
     "--cov-fail-under=80",
 ]
-testpaths = ["tests"]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "gui: marks tests that require GUI",
+    "unit: Unit tests for individual components",
+    "integration: End-to-end integration tests",
+    "performance: Performance and benchmark tests",
+    "slow: Slow running tests (>5 seconds)",
+    "gui: Tests requiring GUI/display",
+    "network: Tests requiring network access",
 ]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+    "*/dist/*",
+    "*/build/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 # Code formatting and linting
 [tool.black]
@@ -139,9 +170,9 @@ ensure_newline_before_comments = true
 [tool.flake8]
 max-line-length = 100
 extend-ignore = [
-    "E203",  # whitespace before ':'
-    "E501",  # line too long (handled by black)
-    "W503",  # line break before binary operator
+    "E203", # whitespace before ':'
+    "E501", # line too long (handled by black)
+    "W503", # line break before binary operator
 ]
 exclude = [
     ".git",
@@ -201,26 +232,4 @@ module = [
 ]
 ignore_missing_imports = true
 
-[tool.coverage.run]
-source = ["src"]
-omit = [
-    "*/tests/*",
-    "*/test_*",
-    "*/conftest.py",
-    "*/__main__.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
-ensure_newline_before_comments = true
+# End of configuration

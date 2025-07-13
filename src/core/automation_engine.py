@@ -404,11 +404,19 @@ class AutomationEngine:
                 window_x, window_y = window.x, window.y
             
             # Find continue buttons
+            self.logger.info(f"🔍 Screenshot info: {screenshot.width}x{screenshot.height}")
+            if screenshot.width <= 100 and screenshot.height <= 100:
+                self.logger.info("📸 Small screenshot detected - likely mock image")
+            
             buttons = self.button_finder.find_continue_buttons(
                 screenshot, window_x, window_y
             )
             
-            self.logger.debug(f"Found {len(buttons)} continue buttons in window")
+            self.logger.info(f"🎯 Found {len(buttons)} continue buttons in window: {window.title[:30]}")
+            if buttons:
+                for i, btn in enumerate(buttons, 1):
+                    self.logger.info(f"   Button {i}: {btn.method} at ({btn.center_x}, {btn.center_y})")
+            
             self.stats['buttons_found'] += len(buttons)
             
             # Click buttons if not in dry run mode

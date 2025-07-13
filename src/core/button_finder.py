@@ -111,6 +111,12 @@ class ButtonFinder:
         buttons = []
         
         try:
+            # Check if this is a mock/fallback image (small black image from Wayland)
+            if (image.width <= 100 and image.height <= 100 and 
+                self._is_mock_image(image)):
+                self.logger.info("🚨 Detected mock screenshot - using coordinate-based fallback")
+                return self._get_coordinate_based_buttons(window_x, window_y)
+            
             # Method 1: Specific Continue button detection (HIGHEST PRIORITY)
             specific_buttons = self._detect_specific_continue_button(image, window_x, window_y)
             buttons.extend(specific_buttons)
@@ -1278,3 +1284,94 @@ class ButtonFinder:
         self.logger.debug(f"Filtered {len(buttons)} buttons down to "
                         f"{len(filtered)} Continue candidates")
         return filtered
+
+    def _is_mock_image(self, image: Image.Image) -> bool:
+        """Check if the image is a mock image (e.g., all black or all white).
+        
+        Args:
+            image: PIL Image to check
+            
+        Returns:
+            True if the image is a mock image
+        """
+        try:
+            # Convert to grayscale and calculate mean brightness
+            gray_image = image.convert('L')
+            histogram = gray_image.histogram()
+            
+            # Calculate brightness as the average of the histogram
+            brightness = sum(i * hist for i, hist in enumerate(histogram)) / sum(histogram)
+            
+            # Heuristic thresholds for mock image detection
+            return brightness < 10 or brightness > 245  # Very dark or very bright images
+        except Exception as e:
+            self.logger.debug(f"Error checking mock image: {e}")
+            return False
+    
+    def _get_coordinate_based_buttons(self, window_x: int, window_y: int) -> List[ButtonLocation]:
+        """Fallback to coordinate-based button detection with user-specific coordinates.
+        
+        Args:
+            window_x: X offset of the window
+            window_y: Y offset of the window
+            
+        Returns:
+            List of ButtonLocation objects with predefined coordinates
+        """
+        self.logger.info("📍 Using coordinate-based Continue button detection")
+        self.logger.info(f"   Window position: ({window_x}, {window_y})")
+        
+        buttons = []
+        
+        # Position 1: USER-SPECIFIC COORDINATES - Continue button location
+        # X: 1713, Y: 1723 (most common Continue button location)
+        user_btn_x = 1713
+        user_btn_y = 1723
+        buttons.append(ButtonLocation(
+            x=user_btn_x, y=user_btn_y, width=120, height=32,
+            confidence=0.98, method="user_coordinates",
+            text="Continue (user-specific location)"
+        ))
+        
+        # Position 2: VS Code Copilot Chat Continue buttons (fallback positions)
+        # Bottom-right area of the chat panel (most common)
+        btn1_x = window_x + 1920 - 180  # 180px from right edge
+        btn1_y = window_y + 992 - 100   # 100px from bottom
+        buttons.append(ButtonLocation(
+            x=btn1_x, y=btn1_y, width=120, height=32,
+            confidence=0.95, method="coordinate_fallback",
+            text="Continue (bottom-right)"
+        ))
+        
+        # Position 3: Center-right area (alternative chat location)
+        btn2_x = window_x + 1920 - 180
+        btn2_y = window_y + 992 - 200   # Higher up in chat
+        buttons.append(ButtonLocation(
+            x=btn2_x, y=btn2_y, width=120, height=32,
+            confidence=0.90, method="coordinate_fallback",
+            text="Continue (center-right)"
+        ))
+        
+        # Position 4: Chat input area (where responses appear)
+        btn3_x = window_x + 1920 - 180
+        btn3_y = window_y + 992 - 300   # Chat response area
+        buttons.append(ButtonLocation(
+            x=btn3_x, y=btn3_y, width=120, height=32,
+            confidence=0.85, method="coordinate_fallback",
+            text="Continue (input area)"
+        ))
+        
+        # Position 5: Left side of chat (some layouts)
+        btn4_x = window_x + 1920 - 900  # More center-left
+        btn4_y = window_y + 992 - 100
+        buttons.append(ButtonLocation(
+            x=btn4_x, y=btn4_y, width=120, height=32,
+            confidence=0.80, method="coordinate_fallback",
+            text="Continue (center-left)"
+        ))
+        
+        # Log the calculated positions for debugging
+        for i, btn in enumerate(buttons, 1):
+            self.logger.info(f"   Button {i}: ({btn.x}, {btn.y}) - {btn.text}")
+        
+        return buttons
