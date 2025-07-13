@@ -106,6 +106,8 @@ class AutomationWorker(QThread):
         
         cycle_count = 0
         self._last_click_count = 0
+        self._last_gui_update = 0
+        GUI_UPDATE_INTERVAL = 3  # Update GUI every 3 cycles for performance
         
         # Start the automation engine
         if self.automation_engine:
@@ -117,48 +119,67 @@ class AutomationWorker(QThread):
         while self.running and self.automation_engine:
             try:
                 cycle_count += 1
-                self.status_update.emit(f"Running cycle {cycle_count}...")
                 
-                # Run one automation cycle
+                # Only update status occasionally to reduce GUI overhead
+                if cycle_count % GUI_UPDATE_INTERVAL == 0:
+                    self.status_update.emit(f"Running cycle {cycle_count}...")
+                
+                # Run one automation cycle with enhanced logging
+                self.log_message.emit("DEBUG", 
+                    f"Starting cycle {cycle_count} - processing windows...")
                 await self.automation_engine._process_vscode_windows()
                 
-                # Get current window count (not cumulative)
-                current_windows = self.automation_engine.window_detector.get_vscode_windows()
-                current_window_count = len(current_windows)
+                # Log stats after each cycle
+                engine_stats = self.automation_engine.get_statistics()
+                if cycle_count % 5 == 0:  # Log detailed stats every 5 cycles
+                    windows_count = engine_stats.get('windows_processed', 0)
+                    buttons_count = engine_stats.get('buttons_found', 0)
+                    clicks_count = engine_stats.get('clicks_attempted', 0)
+                    self.log_message.emit("INFO",
+                        f"Cycle {cycle_count}: Windows: {windows_count}, "
+                        f"Buttons: {buttons_count}, Clicks: {clicks_count}")
                 
-                # Get real stats from automation engine
-                report = self.automation_engine.get_performance_report()
-                engine_stats = report['statistics']
-                
-                # Enhanced stats for GUI display
-                gui_stats = {
-                    'cycles': cycle_count,
-                    'windows_found': current_window_count,  # Use current count, not cumulative
-                    'buttons_clicked': engine_stats.get('clicks_successful', 0),
-                    'buttons_attempted': engine_stats.get('clicks_attempted', 0),
-                    'success_rate': report.get('success_rate', 0) * 100,
-                    'errors': engine_stats.get('errors', 0),
-                    'runtime': report.get('runtime_seconds', 0)
-                }
-                
-                self.stats_update.emit(gui_stats)
-                
-                # Log new button clicks
-                clicks = engine_stats.get('clicks_successful', 0)
-                if clicks > self._last_click_count:
-                    new_clicks = clicks - self._last_click_count
-                    self.log_message.emit("SUCCESS", 
-                        f"Clicked {new_clicks} Continue button(s)! "
-                        f"Total: {clicks}")
-                    self._last_click_count = clicks
+                # Only update GUI stats every few cycles to improve performance
+                if cycle_count % GUI_UPDATE_INTERVAL == 0:
+                    # Get current window count (cached to avoid repeated calls)
+                    detector = self.automation_engine.window_detector
+                    current_windows = detector.get_vscode_windows()
+                    current_window_count = len(current_windows)
+                    
+                    # Get real stats from automation engine
+                    report = self.automation_engine.get_performance_report()
+                    engine_stats = report['statistics']
+                    
+                    # Enhanced stats for GUI display
+                    gui_stats = {
+                        'cycles': cycle_count,
+                        'windows_found': current_window_count,
+                        'buttons_clicked': engine_stats.get('clicks_successful', 0),
+                        'buttons_attempted': engine_stats.get('clicks_attempted', 0),
+                        'success_rate': report.get('success_rate', 0) * 100,
+                        'errors': engine_stats.get('errors', 0),
+                        'runtime': report.get('runtime_seconds', 0)
+                    }
+                    
+                    self.stats_update.emit(gui_stats)
+                    
+                    # Log new button clicks (only when GUI updates)
+                    clicks = engine_stats.get('clicks_successful', 0)
+                    if clicks > self._last_click_count:
+                        new_clicks = clicks - self._last_click_count
+                        self.log_message.emit("SUCCESS",
+                            f"Clicked {new_clicks} Continue "
+                            f"button(s)! Total: {clicks}")
+                        self._last_click_count = clicks
             
-                # Sleep between cycles
-                interval = self.config_manager.get('automation.interval_seconds', 2.0)
-                await asyncio.sleep(interval)
+                # Longer sleep interval to reduce CPU usage
+                interval = self.config_manager.get(
+                    'automation.interval_seconds', 5.0)
+                await asyncio.sleep(max(interval, 3.0))  # Minimum 3 seconds
                 
             except Exception as e:
                 self.log_message.emit("ERROR", f"Cycle error: {e}")
-                await asyncio.sleep(5)  # Wait before retrying
+                await asyncio.sleep(10)  # Wait longer before retrying
     
     def _calculate_success_rate(self, stats: Dict) -> float:
         """Calculate success rate from engine stats."""
@@ -175,38 +196,43 @@ class AutomationWorker(QThread):
         buttons_clicked = 0
         
         while self.running:
-            # Simulate detection cycle
-            time.sleep(2)
+            # Simulate detection cycle with longer sleep for performance
+            time.sleep(5)  # Increased from 2 to 5 seconds
             cycle_count += 1
             
-            # Simulate finding windows and buttons
-            if cycle_count % 3 == 0:  # Every 3rd cycle find a window
+            # Simulate finding windows and buttons (less frequently)
+            if cycle_count % 4 == 0:  # Every 4th cycle find a window
                 windows_found += 1
-                self.log_message.emit("INFO", f"Found VS Code window #{windows_found}")
+                self.log_message.emit("INFO", 
+                                    f"Found VS Code window #{windows_found}")
                 
-                if cycle_count % 5 == 0:  # Every 5th cycle click a button
+                if cycle_count % 8 == 0:  # Every 8th cycle click a button
                     buttons_clicked += 1
-                    self.log_message.emit("SUCCESS", f"Clicked Continue button #{buttons_clicked}")
+                    self.log_message.emit("SUCCESS", 
+                                        f"Clicked Continue button "
+                                        f"#{buttons_clicked}")
             
-            # Update statistics
-            stats = {
-                'cycles': cycle_count,
-                'windows_found': windows_found,
-                'buttons_clicked': buttons_clicked,
-                'success_rate': (buttons_clicked / max(windows_found, 1)) * 100
-            }
-            self.stats_update.emit(stats)
+            # Update statistics (less frequently)
+            if cycle_count % 2 == 0:  # Update GUI every other cycle
+                stats = {
+                    'cycles': cycle_count,
+                    'windows_found': windows_found,
+                    'buttons_clicked': buttons_clicked,
+                    'success_rate': (buttons_clicked / max(windows_found, 1)) * 100
+                }
+                self.stats_update.emit(stats)
             
-            # Update status
+            # Update status (even less frequently)
             if cycle_count % 10 == 0:
-                self.status_update.emit(f"Running... (Cycle {cycle_count})")
+                self.status_update.emit(f"Demo Mode... (Cycle {cycle_count})")
     
     def stop(self):
         """Stop the automation worker."""
         self.running = False
         if self.automation_engine:
-            # Stop automation engine
-            pass
+            # Clean up automation engine
+            self.automation_engine.running = False
+            self.automation_engine = None  # Free memory
         self.status_update.emit("Stopped")
 
 
@@ -266,9 +292,9 @@ class StatisticsWidget(QWidget):
     def update_stats(self, stats: Dict):
         """Update statistics display."""
         cycles = stats.get('cycles', 0)
-        windows = stats.get('windows_found', 0)
-        clicks = stats.get('buttons_clicked', 0)
-        attempts = stats.get('buttons_attempted', 0)
+        windows = stats.get('windows_processed', 0)  # Use correct field name
+        clicks = stats.get('clicks_successful', 0)  # Use correct field name
+        attempts = stats.get('clicks_attempted', 0)  # Use correct field name
         success_rate = stats.get('success_rate', 0)
         errors = stats.get('errors', 0)
         
@@ -298,8 +324,8 @@ class ConfigurationWidget(QWidget):
         
         auto_layout.addWidget(QLabel("Detection Interval (s):"), 0, 0)
         self.interval_spin = QSpinBox()
-        self.interval_spin.setRange(1, 60)
-        self.interval_spin.setValue(5)
+        self.interval_spin.setRange(3, 60)  # Minimum 3 seconds for performance
+        self.interval_spin.setValue(8)  # Higher default for better performance
         auto_layout.addWidget(self.interval_spin, 0, 1)
         
         auto_layout.addWidget(QLabel("Max Retries:"), 1, 0)
@@ -668,8 +694,8 @@ class MainWindow(QMainWindow):
         
         quick_layout.addWidget(QLabel("Detection Interval:"), 0, 0)
         self.quick_interval = QSpinBox()
-        self.quick_interval.setRange(1, 60)
-        self.quick_interval.setValue(5)
+        self.quick_interval.setRange(3, 60)  # Minimum 3 seconds for performance
+        self.quick_interval.setValue(8)  # Higher default for better performance
         self.quick_interval.setSuffix(" seconds")
         quick_layout.addWidget(self.quick_interval, 0, 1)
         
@@ -765,12 +791,86 @@ class MainWindow(QMainWindow):
         # Add initial log message
         self.log_tab.add_log_message("INFO", "Application started")
     
+    def _cleanup_existing_processes(self):
+        """Kill any existing automation processes to prevent conflicts."""
+        import psutil
+        
+        try:
+            self.log_tab.add_log_message(
+                "INFO", "Cleaning up existing automation processes...")
+            
+            # List of process patterns to kill
+            patterns = [
+                'lightweight_automation.py',
+                'main_window.py',
+                'run.sh',
+                'continuous_automation.py',
+                'vscode-chat-continue'
+            ]
+            
+            killed_count = 0
+            
+            # Find and kill matching processes
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    proc_info = proc.info
+                    cmdline = proc_info.get('cmdline', [])
+                    
+                    if cmdline:
+                        cmdline_str = ' '.join(
+                            str(arg) for arg in cmdline if arg)
+                        
+                        # Skip our own process
+                        if proc.pid == psutil.Process().pid:
+                            continue
+                            
+                        # Check if this is an automation process
+                        for pattern in patterns:
+                            if pattern in cmdline_str:
+                                try:
+                                    proc.terminate()
+                                    proc.wait(timeout=3)
+                                    killed_count += 1
+                                    self.log_tab.add_log_message("INFO",
+                                        f"Terminated process {proc.pid}: "
+                                        f"{pattern}")
+                                    break
+                                except (psutil.NoSuchProcess,
+                                        psutil.TimeoutExpired):
+                                    try:
+                                        proc.kill()
+                                        killed_count += 1
+                                        self.log_tab.add_log_message(
+                                            "WARNING",
+                                            f"Force killed process "
+                                            f"{proc.pid}: {pattern}")
+                                    except psutil.NoSuchProcess:
+                                        pass
+                                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            if killed_count > 0:
+                msg = (f"Cleaned up {killed_count} existing automation "
+                       f"process(es)")
+                self.log_tab.add_log_message("INFO", msg)
+            else:
+                msg = "No existing automation processes found"
+                self.log_tab.add_log_message("INFO", msg)
+                    
+        except Exception as e:
+            msg = f"Error during process cleanup: {e}"
+            self.log_tab.add_log_message("WARNING", msg)
+    
     def start_automation(self):
         """Start the automation process."""
         if self.automation_worker and self.automation_worker.isRunning():
             return
             
         self.log_tab.add_log_message("INFO", "Starting automation...")
+        
+        # Kill any existing automation processes first
+        self._cleanup_existing_processes()
         
         # Apply quick settings to config
         self.config_manager.set(
@@ -782,6 +882,11 @@ class MainWindow(QMainWindow):
         self.config_manager.set(
             'demo_mode', self.quick_demo_mode.isChecked()
         )
+        # Ensure audio is disabled to prevent beeping
+        self.config_manager.set('audio.enabled', False)
+        
+        # Disable system bell/beep to prevent terminal beeps
+        self.config_manager.set('system.disable_bell', True)
         
         # Start worker thread
         self.automation_worker = AutomationWorker(self.config_manager)

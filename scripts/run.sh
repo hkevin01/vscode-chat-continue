@@ -37,18 +37,20 @@ USAGE:
     ./scripts/run.sh [OPTIONS]
 
 OPTIONS:
-    --cli           Use command-line interface instead of GUI (default: GUI)
-    --gui           Launch GUI interface (default behavior)
+    --lightweight   Use lightweight command-line interface (default)
+    --gui           Launch GUI interface (resource intensive)
+    --cli           Use command-line interface (same as --lightweight)
     --dry-run       Run in dry-run mode (no actual clicking)
     --config FILE   Use custom configuration file
     --validate      Validate installation and dependencies
     --help, -h      Show this help message
 
 EXAMPLES:
-    ./scripts/run.sh                    # Launch GUI interface (default)
-    ./scripts/run.sh --cli              # Use command-line interface
-    ./scripts/run.sh --dry-run          # Test mode without clicking (GUI)
-    ./scripts/run.sh --cli --dry-run    # Test mode with command-line interface
+    ./scripts/run.sh                    # Use lightweight interface (default)
+    ./scripts/run.sh --lightweight      # Use lightweight interface (explicit)
+    ./scripts/run.sh --gui              # Use GUI interface (resource intensive)
+    ./scripts/run.sh --dry-run          # Test mode without clicking
+    ./scripts/run.sh --lightweight --dry-run  # Lightweight test mode
     ./scripts/run.sh --validate         # Check if everything is working
 
 SETUP:
@@ -60,15 +62,15 @@ CONFIGURATION:
     Custom config:  ./scripts/run.sh --config /path/to/config.json
 
 DEFAULT BEHAVIOR:
-    By default, the script launches the modern PyQt6 GUI interface for the 
-    best user experience. Use --cli to force command-line mode if needed.
+    By default, the script uses the lightweight command-line interface for 
+    optimal performance. Use --gui to launch the GUI if needed.
 
 For more information, see docs/USAGE.md
 EOF
 }
 
 # Parse command line arguments
-GUI_MODE=true  # Default to GUI mode for better user experience
+GUI_MODE=false  # Default to lightweight mode for better performance
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
@@ -79,7 +81,7 @@ while [[ $# -gt 0 ]]; do
             GUI_MODE=true
             shift
             ;;
-        --cli)
+        --lightweight|--cli)
             GUI_MODE=false
             shift
             ;;
@@ -290,7 +292,7 @@ fi
 # Display startup information
 echo ""
 print_success "🚀 Starting VS Code Chat Continue Automation"
-print_info "Mode: $(if $GUI_MODE; then echo "GUI Interface"; else echo "Command Line"; fi)"
+print_info "Mode: $(if $GUI_MODE; then echo "GUI Interface"; else echo "Lightweight CLI"; fi)"
 print_info "Dry Run: $(if $DRY_RUN; then echo "Enabled (no actual clicking)"; else echo "Disabled"; fi)"
 print_info "Config: ${CONFIG_FILE:-"Default (~/.config/vscode-chat-continue/config.json)"}"
 print_info "Project: $PROJECT_DIR"
@@ -303,18 +305,15 @@ trap 'print_warning "Stopping automation..."; exit 130' INT
 
 # Run the appropriate application
 if $GUI_MODE; then
-    print_info "Launching GUI interface..."
-    
     # Test PyQt6 availability first
     if ! python -c "import PyQt6" 2>/dev/null; then
-        print_error "PyQt6 not available. Falling back to CLI mode..."
+        print_error "PyQt6 not available. Falling back to lightweight mode..."
         print_info "Install PyQt6 with: pip install PyQt6"
         GUI_MODE=false
     fi
 fi
 
 if $GUI_MODE; then
-    print_info "Launching GUI interface..."
     
     # Test PyQt6 availability first
     if ! python -c "import PyQt6" 2>/dev/null; then
@@ -328,18 +327,18 @@ if $GUI_MODE; then
     # Try to launch GUI through main.py with --gui flag
     print_info "Starting GUI mode..."
     if ! python src/main.py --gui "${PYTHON_ARGS[@]}"; then
-        print_error "GUI launch failed. Falling back to CLI mode..."
+        print_error "GUI launch failed. Falling back to lightweight mode..."
         print_info "This might be due to:"
         print_info "  • No display environment (SSH without X11 forwarding)"
         print_info "  • Missing PyQt6 dependencies"
         print_info "  • Display permissions issues"
         print_info ""
-        print_info "Starting command-line automation..."
-        python src/main.py "${PYTHON_ARGS[@]}"
+        print_info "Starting lightweight automation..."
+        python lightweight_automation.py "${PYTHON_ARGS[@]}"
     fi
 else
-    print_info "Starting command-line automation..."
-    python src/main.py "${PYTHON_ARGS[@]}"
+    print_info "Starting lightweight automation..."
+    python lightweight_automation.py "${PYTHON_ARGS[@]}"
 fi
 
 # Cleanup

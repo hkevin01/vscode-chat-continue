@@ -5,13 +5,13 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from src.core.button_finder import ButtonFinder, ButtonLocation
-from src.core.click_automator import ClickAutomator
-from src.core.config_manager import ConfigManager
-from src.core.window_detector import VSCodeWindow, WindowDetector
-from src.core.window_focus_manager import WindowFocusManager
-from src.utils.audio_suppressor import disable_audio_suppression, enable_audio_suppression
-from src.utils.screen_capture import ScreenCapture
+from core.button_finder import ButtonFinder, ButtonLocation
+from core.click_automator import ClickAutomator
+from core.config_manager import ConfigManager
+from core.window_detector import VSCodeWindow, WindowDetector
+from core.window_focus_manager import WindowFocusManager
+from utils.audio_suppressor import disable_audio_suppression, enable_audio_suppression
+from utils.screen_capture import ScreenCapture
 
 try:
     from pynput import keyboard, mouse
@@ -37,6 +37,9 @@ class AutomationEngine:
         self._emergency_stop = False
         self._user_activity_detected = False
         self._last_user_activity = 0.0
+        
+        # Disable system bell to prevent beeping
+        self._disable_system_bell()
         
         # Initialize components
         self.window_detector = WindowDetector()
@@ -77,6 +80,27 @@ class AutomationEngine:
         self._window_cache = {}
         cache_timeout_key = 'performance.cache_timeout_seconds'
         self._cache_timeout = config_manager.get(cache_timeout_key, 30)
+    
+    def _disable_system_bell(self) -> None:
+        """Disable system bell to prevent beeping during automation."""
+        try:
+            if self.config_manager.get('system.disable_bell', True):
+                import os
+                import subprocess
+
+                # Disable terminal bell for current session
+                os.system('setterm -blength 0 2>/dev/null || true')
+                
+                # Try to disable X11 bell
+                subprocess.run(['xset', 'b', 'off'],
+                               capture_output=True, check=False)
+                
+                # Set environment variable to disable bell
+                os.environ['TERM_BELL'] = 'off'
+                
+                self.logger.debug("System bell disabled")
+        except Exception as e:
+            self.logger.debug(f"Could not disable system bell: {e}")
     
     def _setup_safety_features(self) -> None:
         """Set up safety features including emergency stop and monitoring."""
@@ -310,11 +334,18 @@ class AutomationEngine:
             # Get all VS Code windows
             self.logger.debug("Starting window detection...")
             windows = self.window_detector.get_vscode_windows()
-            self.logger.debug(f"Window detection complete. Found {len(windows)} VS Code windows")
+            self.logger.info(
+                f"Found {len(windows)} VS Code windows to process")
             
             if not windows:
                 self.logger.debug("No VS Code windows found, skipping processing")
                 return
+            
+            # Log all windows being processed
+            for i, window in enumerate(windows, 1):
+                self.logger.info(
+                    f"Window {i}: {window.title[:50]}... "
+                    f"({window.width}x{window.height})")
             
             self.stats['windows_processed'] += len(windows)
             
@@ -340,20 +371,34 @@ class AutomationEngine:
                 self.logger.debug(f"Skipping window: {window.title}")
                 return
             
-            # Capture the window
-            screenshot = self.screen_capture.capture_window(
-                window.window_id, window.x, window.y, window.width, window.height
-            )
+            # Capture the window with silent error handling to prevent beeps
+            screenshot = None
+            try:
+                screenshot = self.screen_capture.capture_window(
+                    window.window_id, window.x, window.y,
+                    window.width, window.height
+                )
+            except Exception as capture_error:
+                self.logger.debug(
+                    f"Window capture failed silently: {capture_error}")
             
             if not screenshot:
                 # Fallback: try capturing full screen and search entire screen
-                self.logger.debug(f"Window capture failed for {window.title}, trying full screen capture")
-                screenshot = self.screen_capture.capture_screen()
-                if screenshot:
-                    # Search the entire screen instead of just the window region
-                    window_x, window_y = 0, 0
-                else:
-                    self.logger.warning(f"Both window and full screen capture failed for: {window}")
+                self.logger.debug(
+                    f"Window capture failed for {window.title}, "
+                    f"trying full screen capture")
+                try:
+                    screenshot = self.screen_capture.capture_screen()
+                    if screenshot:
+                        # Search the entire screen instead of window region
+                        window_x, window_y = 0, 0
+                    else:
+                        self.logger.debug(
+                            f"Full screen capture also failed for: {window}")
+                        return
+                except Exception as screen_error:
+                    self.logger.debug(
+                        f"Screen capture failed silently: {screen_error}")
                     return
             else:
                 window_x, window_y = window.x, window.y

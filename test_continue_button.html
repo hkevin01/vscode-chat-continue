@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VS Code Continue Button Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #cccccc;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .test-container {
+            background-color: #252526;
+            border: 1px solid #3c3c3c;
+            border-radius: 8px;
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #ffffff;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .description {
+            margin-bottom: 30px;
+            font-size: 16px;
+            line-height: 1.5;
+            color: #cccccc;
+        }
+
+        .continue-button {
+            background-color: #007ACC;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin: 10px;
+            min-width: 70px;
+            height: 32px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .continue-button:hover {
+            background-color: #005a9e;
+        }
+
+        .continue-button:active {
+            background-color: #004578;
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .test-section {
+            background-color: #2d2d30;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #007ACC;
+        }
+
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+
+        .status.waiting {
+            background-color: #1a1a1a;
+            color: #ffa500;
+        }
+
+        .status.clicked {
+            background-color: #0e4f1f;
+            color: #4ec776;
+        }
+
+        .instructions {
+            text-align: left;
+            background-color: #2d2d30;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .instructions ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin: 8px 0;
+        }
+
+        code {
+            background-color: #1e1e1e;
+            color: #d7ba7d;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎯 VS Code Continue Button Test</h1>
+        
+        <div class="description">
+            This page simulates VS Code's Continue button for testing the automation system.
+            The button below matches the exact styling and behavior of the real Continue button.
+        </div>
+
+        <div class="test-section">
+            <h3>Test Continue Buttons</h3>
+            <div class="button-container">
+                <button class="continue-button" id="continue-btn-1" onclick="buttonClicked(this)">Continue</button>
+                <button class="continue-button" id="continue-btn-2" onclick="buttonClicked(this)">Continue</button>
+                <button class="continue-button" id="continue-btn-3" onclick="buttonClicked(this)">Continue</button>
+            </div>
+            
+            <div id="click-status" class="status waiting">
+                Status: Waiting for automation to click...
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>🧪 Test Instructions:</h3>
+            <ul>
+                <li>Run the automation: <code>python scripts/continuous_automation.py</code></li>
+                <li>Focus another window (make VS Code unfocused)</li>
+                <li>Watch the automation automatically:
+                    <ul>
+                        <li>✅ Detect this VS Code window in the background</li>
+                        <li>✅ Bring it into focus</li>
+                        <li>✅ Click one of the Continue buttons above</li>
+                    </ul>
+                </li>
+                <li>Verify the status changes to "Clicked!" when successful</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 Test Results:</h3>
+            <div id="test-results">
+                <div>✅ Button Detection: <span id="detection-status">Pending</span></div>
+                <div>✅ Window Focus: <span id="focus-status">Pending</span></div>
+                <div>✅ Button Click: <span id="click-result">Pending</span></div>
+                <div>✅ Multiple Windows: <span id="multi-window-status">Pending</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let clickCount = 0;
+        
+        function buttonClicked(button) {
+            clickCount++;
+            
+            // Update button appearance
+            button.style.backgroundColor = '#4ec776';
+            button.innerText = `Clicked! (${clickCount})`;
+            
+            // Update status
+            const status = document.getElementById('click-status');
+            status.className = 'status clicked';
+            status.innerHTML = `✅ Button clicked ${clickCount} time(s)! Automation working correctly.`;
+            
+            // Update test results
+            document.getElementById('detection-status').innerHTML = '✅ Success';
+            document.getElementById('focus-status').innerHTML = '✅ Success';
+            document.getElementById('click-result').innerHTML = '✅ Success';
+            
+            // Log to console for debugging
+            console.log(`Continue button clicked! Count: ${clickCount}, Button: ${button.id}`);
+            
+            // Reset button after 3 seconds
+            setTimeout(() => {
+                button.style.backgroundColor = '#007ACC';
+                button.innerText = 'Continue';
+            }, 3000);
+        }
+
+        // Detect if page is focused/unfocused
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                document.getElementById('focus-status').innerHTML = '⏳ Window unfocused - testing automation...';
+            } else {
+                document.getElementById('focus-status').innerHTML = '✅ Window focused';
+            }
+        });
+
+        // Check for multiple VS Code windows
+        if (window.opener || window.parent !== window) {
+            document.getElementById('multi-window-status').innerHTML = '✅ Multiple windows detected';
+        }
+
+        // Add some dynamic behavior to simulate real chat
+        setInterval(() => {
+            if (Math.random() < 0.1) { // 10% chance every second
+                const buttons = document.querySelectorAll('.continue-button');
+                buttons.forEach(btn => {
+                    if (btn.innerText === 'Continue') {
+                        btn.style.boxShadow = '0 0 5px #007ACC';
+                        setTimeout(() => {
+                            btn.style.boxShadow = 'none';
+                        }, 500);
+                    }
+                });
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
