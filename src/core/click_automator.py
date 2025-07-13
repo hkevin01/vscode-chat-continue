@@ -94,12 +94,15 @@ class ClickAutomator:
             self.logger.debug(f"Available click methods: {', '.join(methods)}")
     
     def _init_controllers(self) -> None:
-        """Initialize mouse controllers."""
+        """Initialize mouse and keyboard controllers."""
         self.mouse_controller = None
+        self.keyboard_controller = None
         
         if HAS_PYNPUT:
             try:
                 self.mouse_controller = MouseController()
+                self.keyboard_controller = KeyboardController()
+                self.logger.debug("Initialized pynput controllers")
             except Exception as e:
                 self.logger.debug(f"Failed to initialize pynput controller: {e}")
         
@@ -401,6 +404,90 @@ class ClickAutomator:
         except Exception as e:
             return ClickResult(success=False, x=x, y=y, method="double_error",
                              error=str(e))
+    
+    def type_text(self, text: str, delay: float = 0.05) -> bool:
+        """Type text using keyboard controller.
+        
+        Args:
+            text: Text to type
+            delay: Delay between keystrokes
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.keyboard_controller:
+            self.logger.warning("Keyboard controller not available")
+            return False
+            
+        try:
+            self.logger.debug(f"Typing text: '{text}'")
+            for char in text:
+                self.keyboard_controller.type(char)
+                if delay > 0:
+                    time.sleep(delay)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to type text: {e}")
+            return False
+    
+    def press_key(self, key) -> bool:
+        """Press a specific key.
+        
+        Args:
+            key: Key to press (from pynput.keyboard.Key)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.keyboard_controller:
+            self.logger.warning("Keyboard controller not available")
+            return False
+            
+        try:
+            self.keyboard_controller.press(key)
+            self.keyboard_controller.release(key)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to press key: {e}")
+            return False
+
+    def click_and_type_continue(self, chat_x: int, chat_y: int) -> bool:
+        """Click on chat field and type 'continue' + Enter.
+        
+        Args:
+            chat_x: X coordinate of chat input field
+            chat_y: Y coordinate of chat input field
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Click on the chat input field
+            click_result = self.click(chat_x, chat_y)
+            if not click_result.success:
+                self.logger.warning("Failed to click chat input field")
+                return False
+                
+            # Wait a moment for focus
+            time.sleep(0.2)
+            
+            # Type "continue"
+            if not self.type_text("continue", delay=0.03):
+                self.logger.warning("Failed to type 'continue'")
+                return False
+                
+            # Press Enter
+            time.sleep(0.1)
+            if not self.press_key(Key.enter):
+                self.logger.warning("Failed to press Enter")
+                return False
+                
+            self.logger.info("Successfully typed 'continue' in chat field")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to click and type continue: {e}")
+            return False
     
     def is_available(self) -> bool:
         """Check if click automation is available.
