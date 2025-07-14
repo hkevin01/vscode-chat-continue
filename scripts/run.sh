@@ -37,22 +37,23 @@ USAGE:
     ./scripts/run.sh [OPTIONS]
 
 OPTIONS:
-    --safe          Use ultra-safe mode (DEFAULT - prevents system freezing)
-    --lightweight   Use lightweight command-line interface  
-    --gui           Launch GUI interface (resource intensive)
-    --cli           Use command-line interface (same as --lightweight)
-    --dry-run       Run in dry-run mode (no actual clicking)
-    --config FILE   Use custom configuration file
-    --validate      Validate installation and dependencies
-    --help, -h      Show this help message
+    --safe              Use ultra-safe mode (DEFAULT - prevents system freezing)
+    --high-capacity     Optimized for many VS Code windows (higher load tolerance)
+    --lightweight       Use lightweight command-line interface  
+    --gui               Launch GUI interface (resource intensive)
+    --cli               Use command-line interface (same as --lightweight)
+    --dry-run           Run in dry-run mode (no actual clicking)
+    --config FILE       Use custom configuration file
+    --validate          Validate installation and dependencies
+    --help, -h          Show this help message
 
 EXAMPLES:
-    ./scripts/run.sh                    # Use safe mode (DEFAULT)
-    ./scripts/run.sh --safe             # Use safe mode (explicit)
-    ./scripts/run.sh --lightweight      # Use lightweight interface
-    ./scripts/run.sh --gui              # Use GUI interface (resource intensive)
-    ./scripts/run.sh --dry-run          # Test mode without clicking
-    ./scripts/run.sh --lightweight --dry-run  # Lightweight test mode
+    ./scripts/run.sh                        # Use safe mode (DEFAULT)
+    ./scripts/run.sh --high-capacity        # For many VS Code windows
+    ./scripts/run.sh --safe                 # Use safe mode (explicit)
+    ./scripts/run.sh --lightweight          # Use lightweight interface
+    ./scripts/run.sh --gui                  # Use GUI interface (resource intensive)
+    ./scripts/run.sh --dry-run              # Test mode without clicking
     ./scripts/run.sh --validate         # Check if everything is working
 
 SETUP:
@@ -75,6 +76,7 @@ EOF
 # Parse command line arguments
 GUI_MODE=false  # Default to lightweight mode for better performance
 SAFE_MODE=true   # Default to safe mode to prevent system freezing
+HIGH_CAPACITY=false  # High-capacity mode for many windows
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
@@ -84,16 +86,25 @@ while [[ $# -gt 0 ]]; do
         --gui)
             GUI_MODE=true
             SAFE_MODE=false  # GUI mode overrides safe mode
+            HIGH_CAPACITY=false
             shift
             ;;
         --safe)
             SAFE_MODE=true
             GUI_MODE=false  # Safe mode overrides GUI
+            HIGH_CAPACITY=false
+            shift
+            ;;
+        --high-capacity)
+            HIGH_CAPACITY=true
+            SAFE_MODE=false
+            GUI_MODE=false
             shift
             ;;
         --lightweight|--cli)
             GUI_MODE=false
             SAFE_MODE=false  # Explicit lightweight mode disables safe mode
+            HIGH_CAPACITY=false
             shift
             ;;
         --dry-run)
@@ -351,7 +362,17 @@ if $GUI_MODE; then
     fi
 fi
 
-if $SAFE_MODE; then
+if $HIGH_CAPACITY; then
+    print_success "🚀 HIGH-CAPACITY MODE"
+    print_info "Optimized for environments with many VS Code windows"
+    print_info "• Higher load tolerance (up to 8.0)"
+    print_info "• Processes up to 10 windows per cycle"
+    print_info "• Intelligent window prioritization"
+    print_info "• Coordinate-based fallback under high load"
+    print_info "• Existing process cleanup completed"
+    print_info ""
+    python "$SCRIPT_DIR/high_capacity_automation.py" "${PYTHON_ARGS[@]}"
+elif $SAFE_MODE; then
     print_success "🛡️  SAFE MODE (DEFAULT)"
     print_info "Using ultra-safe automation to prevent system freezing"
     print_info "• Conservative resource usage (10+ second intervals)"
