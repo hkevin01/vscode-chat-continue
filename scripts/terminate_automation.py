@@ -44,15 +44,15 @@ class AutomationTerminator:
         )
         self.logger = logging.getLogger(__name__)
         
-        # Process patterns to search for
+        # Process patterns to search for (specific automation scripts only)
         self.automation_patterns = [
-            'vscode-chat-continue',
             'lightweight_automation.py',
             'continuous_automation.py',
+            'safe_automation.py',
             'main_window.py',
             'automation_engine.py',
-            'run.sh',
-            'src/main.py'
+            'src/main.py',
+            'scripts/main.py'
         ]
     
     def find_automation_processes(self) -> List[Tuple[int, str, str]]:
