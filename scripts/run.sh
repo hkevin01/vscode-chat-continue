@@ -334,11 +334,11 @@ if $GUI_MODE; then
         print_info "  • Display permissions issues"
         print_info ""
         print_info "Starting lightweight automation..."
-        python lightweight_automation.py "${PYTHON_ARGS[@]}"
+        python "$SCRIPT_DIR/lightweight_automation.py" "${PYTHON_ARGS[@]}"
     fi
 else
     print_info "Starting lightweight automation..."
-    python lightweight_automation.py "${PYTHON_ARGS[@]}"
+    python "$SCRIPT_DIR/lightweight_automation.py" "${PYTHON_ARGS[@]}"
 fi
 
 # Cleanup
