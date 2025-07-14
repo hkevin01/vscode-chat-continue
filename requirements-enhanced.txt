@@ -1,0 +1,24 @@
+# Enhanced Button Detection Dependencies
+# Add these to your requirements.txt for improved detection capabilities
+
+# Core enhancements (recommended)
+easyocr>=1.7.0                    # Better OCR than Tesseract for many cases
+opencv-python>=4.8.0             # Enhanced computer vision features
+pillow>=10.0.0                   # Image processing enhancements
+
+# Advanced features (optional)
+scikit-image>=0.21.0             # Advanced image processing algorithms
+numpy>=1.24.0                    # Required for advanced processing
+
+# Machine learning enhancements (optional, requires more setup)
+# ultralytics>=8.0.0             # YOLO object detection
+# torch>=2.0.0                   # PyTorch for ML models
+# torchvision>=0.15.0            # Vision models
+
+# Performance optimizations (optional)
+# pillow-simd                     # Faster PIL operations (alternative to pillow)
+# opencv-contrib-python           # Additional OpenCV features
+
+# GPU acceleration (optional, CUDA required)
+# easyocr[gpu]                    # GPU-accelerated EasyOCR
+# torch[cu118]                    # GPU PyTorch

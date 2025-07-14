@@ -25,6 +25,18 @@ try:
 except ImportError:
     HAS_TESSERACT = False
 
+try:
+    import easyocr
+    HAS_EASYOCR = True
+except ImportError:
+    HAS_EASYOCR = False
+
+try:
+    from skimage import filters, measure, morphology
+    HAS_SKIMAGE = True
+except ImportError:
+    HAS_SKIMAGE = False
+
 
 @dataclass
 class ButtonLocation:
@@ -63,7 +75,17 @@ class ButtonFinder:
             template_dir: Directory containing button template images
         """
         self.logger = logging.getLogger(__name__)
-        self.template_dir = template_dir or Path(__file__).parent.parent / "templates"
+        self.template_dir = (template_dir or 
+                           Path(__file__).parent.parent / "templates")
+        
+        # Initialize EasyOCR if available
+        self.easyocr_reader = None
+        if HAS_EASYOCR:
+            try:
+                self.easyocr_reader = easyocr.Reader(['en'], gpu=False)
+                self.logger.info("✅ EasyOCR initialized for enhanced detection")
+            except Exception as e:
+                self.logger.warning(f"EasyOCR initialization failed: {e}")
         
         # Button detection configuration
         self.continue_patterns = [
@@ -130,7 +152,13 @@ class ButtonFinder:
                     # Return immediately if we have very confident detections
                     return self._deduplicate_buttons(high_conf_specific)
             
-            # Method 2: OCR-based text detection
+            # Method 2: EasyOCR detection (enhanced accuracy)
+            if HAS_EASYOCR and self.easyocr_reader:
+                easy_buttons = self._find_buttons_easyocr(image, window_x, window_y)
+                buttons.extend(easy_buttons)
+                self.logger.debug(f"EasyOCR found {len(easy_buttons)} buttons")
+            
+            # Method 3: OCR-based text detection
             if HAS_TESSERACT:
                 ocr_buttons = self._find_buttons_ocr(image, window_x, window_y)
                 buttons.extend(ocr_buttons)
@@ -1375,3 +1403,93 @@ class ButtonFinder:
             self.logger.info(f"   Button {i}: ({btn.x}, {btn.y}) - {btn.text}")
         
         return buttons
+
+    def _find_buttons_easyocr(self, image: Image.Image, 
+                             window_x: int, window_y: int) -> List[ButtonLocation]:
+        """Find buttons using EasyOCR for enhanced text detection.
+        
+        Args:
+            image: PIL Image to search in
+            window_x: X offset of the window
+            window_y: Y offset of the window
+            
+        Returns:
+            List of ButtonLocation objects
+        """
+        buttons = []
+        
+        if not self.easyocr_reader:
+            return buttons
+        
+        try:
+            # Convert PIL to numpy array for EasyOCR
+            img_array = np.array(image)
+            
+            # Use EasyOCR to detect text
+            results = self.easyocr_reader.readtext(img_array)
+            
+            for (bbox, text, confidence) in results:
+                # Check if this looks like a Continue button
+                if self._is_continue_text(text) and confidence > 0.5:
+                    # Extract bounding box coordinates
+                    # EasyOCR returns [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
+                    x1, y1 = bbox[0]
+                    x2, y2 = bbox[2]
+                    
+                    x, y = int(x1), int(y1)
+                    width, height = int(x2 - x1), int(y2 - y1)
+                    
+                    # Add padding around text for clickable area
+                    padding = 10
+                    x = max(0, x - padding)
+                    y = max(0, y - padding)
+                    width += 2 * padding
+                    height += 2 * padding
+                    
+                    # Boost confidence for EasyOCR (generally more accurate)
+                    adjusted_confidence = min(0.95, confidence + 0.1)
+                    
+                    button = ButtonLocation(
+                        x=x + window_x,
+                        y=y + window_y,
+                        width=width,
+                        height=height,
+                        confidence=adjusted_confidence,
+                        method="easyocr",
+                        text=text.strip()
+                    )
+                    buttons.append(button)
+                    self.logger.debug(
+                        f"EasyOCR found Continue button: '{text}' at "
+                        f"({x}, {y}) with confidence {confidence:.2f}"
+                    )
+                    
+        except Exception as e:
+            self.logger.debug(f"EasyOCR detection error: {e}")
+        
+        return buttons
+
+    def _is_continue_text(self, text: str) -> bool:
+        """Check if the detected text matches Continue button criteria.
+        
+        Args:
+            text: Detected text string
+            
+        Returns:
+            True if text matches Continue button criteria
+        """
+        # Criteria for Continue button text
+        continue_criteria = [
+            r'^\s*continue\s*$',          # Exact match: "Continue"
+            r'^\s*cont\s*$',              # Abbreviated: "Cont"
+            r'^\s*contin\s*$',             # Partial: "Contin"
+            r'^\s*continue\s*\.\.\.\s*$',  # Ellipsis: "Continue..."
+            r'^\s*keep\s*going\s*$',       # Synonym: "Keep going"
+            r'^\s*more\s*$',               # Synonym: "More"
+        ]
+        
+        for pattern in continue_criteria:
+            if re.match(pattern, text, re.IGNORECASE):
+                return True
+        
+        return False

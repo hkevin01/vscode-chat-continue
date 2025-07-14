@@ -7,6 +7,14 @@ psutil>=5.9.0
 pynput>=1.7.6
 numpy>=1.24.0
 
+# Enhanced detection (Phase 1 improvements)
+easyocr>=1.7.0
+scikit-image>=0.21.0
+
+# Enhanced OCR and image processing for Phase 1 improvements
+easyocr>=1.7.0
+scikit-image>=0.21.0
+
 # GUI framework
 PyQt6>=6.5.0
 
