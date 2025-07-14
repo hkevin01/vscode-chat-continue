@@ -75,8 +75,8 @@ EOF
 
 # Parse command line arguments
 GUI_MODE=false  # Default to lightweight mode for better performance
-SAFE_MODE=true   # Default to safe mode to prevent system freezing
-HIGH_CAPACITY=false  # High-capacity mode for many windows
+SAFE_MODE=false   # Default to safe mode to prevent system freezing
+HIGH_CAPACITY=true  # High-capacity mode for many windows
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
@@ -86,13 +86,13 @@ while [[ $# -gt 0 ]]; do
         --gui)
             GUI_MODE=true
             SAFE_MODE=false  # GUI mode overrides safe mode
-            HIGH_CAPACITY=false
+            HIGH_CAPACITY=true
             shift
             ;;
         --safe)
-            SAFE_MODE=true
+            SAFE_MODE=false
             GUI_MODE=false  # Safe mode overrides GUI
-            HIGH_CAPACITY=false
+            HIGH_CAPACITY=true
             shift
             ;;
         --high-capacity)
@@ -104,7 +104,7 @@ while [[ $# -gt 0 ]]; do
         --lightweight|--cli)
             GUI_MODE=false
             SAFE_MODE=false  # Explicit lightweight mode disables safe mode
-            HIGH_CAPACITY=false
+            HIGH_CAPACITY=true
             shift
             ;;
         --dry-run)
