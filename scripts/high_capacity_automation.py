@@ -240,6 +240,42 @@ class HighCapacityAutomation:
             self.logger.error(f"Error processing VS Code window safely: {e}")
             return False
     
+    def type_continue_in_chat(self, window) -> bool:
+        """
+        As a fallback, type 'continue' into the chat window and press Enter.
+        """
+        try:
+            self.logger.info(f"⚙️ Fallback: Typing 'continue' in window {window.window_id}")
+
+            # Focus the window
+            subprocess.run(
+                ["xdotool", "windowactivate", str(window.window_id)],
+                capture_output=True, timeout=2
+            )
+            time.sleep(0.3)  # Slightly longer delay for focus
+
+            # Type "continue"
+            subprocess.run(
+                ["xdotool", "type", "continue"],
+                capture_output=True, timeout=2
+            )
+            time.sleep(0.1)
+
+            # Press Enter
+            subprocess.run(
+                ["xdotool", "key", "Return"],
+                capture_output=True, timeout=2
+            )
+
+            self.logger.info(f"✅ Fallback successful for window {window.window_id}")
+            # Consider this a successful action for stats
+            self.successful_clicks += 1
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Fallback failed for window {window.window_id}: {e}")
+            return False
+
     def is_click_within_window_bounds(self, x: int, y: int, window) -> bool:
         """Verify that click coordinates are within the window bounds."""
         try:
@@ -264,15 +300,21 @@ class HighCapacityAutomation:
             
             for window in batch:
                 try:
-                    # Only process VS Code windows with proper window screenshots
+                    # Try primary method: find and click Continue button
                     if self.process_vscode_window_safely(window):
                         buttons_clicked += 1
-                        # Only click one button per cycle for safety
-                        self.logger.info(f"✅ Clicked button, stopping cycle for safety")
+                        self.logger.info("✅ Button clicked, stopping cycle for safety")
+                        return buttons_clicked
+                    
+                    # Fallback method: type "continue" in chat
+                    self.logger.debug("🔄 Primary method failed, trying fallback...")
+                    if self.type_continue_in_chat(window):
+                        buttons_clicked += 1
+                        self.logger.info("✅ Fallback successful, stopping cycle for safety")
                         return buttons_clicked
                     
                 except Exception as e:
-                    self.logger.debug(f"❌ Error processing VS Code window {window.window_id}: {e}")
+                    self.logger.debug(f"❌ Error processing window {window.window_id}: {e}")
                     continue
             
             # Small delay between batches to prevent overwhelming the system
