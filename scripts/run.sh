@@ -37,7 +37,8 @@ USAGE:
     ./scripts/run.sh [OPTIONS]
 
 OPTIONS:
-    --lightweight   Use lightweight command-line interface (default)
+    --safe          Use ultra-safe mode (DEFAULT - prevents system freezing)
+    --lightweight   Use lightweight command-line interface  
     --gui           Launch GUI interface (resource intensive)
     --cli           Use command-line interface (same as --lightweight)
     --dry-run       Run in dry-run mode (no actual clicking)
@@ -46,8 +47,9 @@ OPTIONS:
     --help, -h      Show this help message
 
 EXAMPLES:
-    ./scripts/run.sh                    # Use lightweight interface (default)
-    ./scripts/run.sh --lightweight      # Use lightweight interface (explicit)
+    ./scripts/run.sh                    # Use safe mode (DEFAULT)
+    ./scripts/run.sh --safe             # Use safe mode (explicit)
+    ./scripts/run.sh --lightweight      # Use lightweight interface
     ./scripts/run.sh --gui              # Use GUI interface (resource intensive)
     ./scripts/run.sh --dry-run          # Test mode without clicking
     ./scripts/run.sh --lightweight --dry-run  # Lightweight test mode
@@ -62,8 +64,9 @@ CONFIGURATION:
     Custom config:  ./scripts/run.sh --config /path/to/config.json
 
 DEFAULT BEHAVIOR:
-    By default, the script uses the lightweight command-line interface for 
-    optimal performance. Use --gui to launch the GUI if needed.
+    By default, the script uses SAFE MODE to prevent system freezing.
+    Safe mode includes automatic process cleanup and conservative resource usage.
+    Use --lightweight for the original lightweight interface if needed.
 
 For more information, see docs/USAGE.md
 EOF
@@ -71,6 +74,7 @@ EOF
 
 # Parse command line arguments
 GUI_MODE=false  # Default to lightweight mode for better performance
+SAFE_MODE=true   # Default to safe mode to prevent system freezing
 DRY_RUN=false
 CONFIG_FILE=""
 VALIDATE_ONLY=false
@@ -79,10 +83,17 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --gui)
             GUI_MODE=true
+            SAFE_MODE=false  # GUI mode overrides safe mode
+            shift
+            ;;
+        --safe)
+            SAFE_MODE=true
+            GUI_MODE=false  # Safe mode overrides GUI
             shift
             ;;
         --lightweight|--cli)
             GUI_MODE=false
+            SAFE_MODE=false  # Explicit lightweight mode disables safe mode
             shift
             ;;
         --dry-run)
@@ -274,6 +285,23 @@ else
     print_success "Found $vscode_count VS Code process(es)"
 fi
 
+# Automatically terminate any existing automation processes
+print_info "Checking for existing automation processes..."
+if [ -f "$SCRIPT_DIR/terminate_automation.py" ]; then
+    # Use our termination script to clean up
+    if python "$SCRIPT_DIR/terminate_automation.py" --cleanup > /dev/null 2>&1; then
+        print_success "Cleaned up existing automation processes"
+    else
+        print_warning "No existing automation processes found"
+    fi
+else
+    # Fallback: simple cleanup
+    if pkill -f "vscode-chat-continue" > /dev/null 2>&1; then
+        print_success "Terminated existing automation processes"
+        sleep 2  # Wait for processes to fully terminate
+    fi
+fi
+
 # Prepare command line arguments
 PYTHON_ARGS=()
 
@@ -323,7 +351,16 @@ if $GUI_MODE; then
     fi
 fi
 
-if $GUI_MODE; then
+if $SAFE_MODE; then
+    print_success "🛡️  SAFE MODE (DEFAULT)"
+    print_info "Using ultra-safe automation to prevent system freezing"
+    print_info "• Conservative resource usage (10+ second intervals)"
+    print_info "• Coordinate-based fallback (no image processing)"
+    print_info "• Automatic performance monitoring"
+    print_info "• Existing process cleanup completed"
+    print_info ""
+    python "$SCRIPT_DIR/safe_automation.py" "${PYTHON_ARGS[@]}"
+elif $GUI_MODE; then
     # Try to launch GUI through main.py with --gui flag
     print_info "Starting GUI mode..."
     if ! python src/main.py --gui "${PYTHON_ARGS[@]}"; then
