@@ -100,8 +100,8 @@
   },
   "monitoring": {
     "enabled": true,
-    "freeze_threshold": 600.0,
-    "recovery_cooldown": 300.0,
+    "freeze_threshold": 10.0,
+    "recovery_cooldown": 30.0,
     "methods": {
       "soft_recovery": {
         "ctrl_enter": true,
@@ -113,6 +113,45 @@
         "process_restart": false,
         "emergency_only": true
       }
+    }
+  },
+  "freeze_detection": {
+    "enabled": true,
+    "test_mode": {
+      "check_interval": 10,
+      "freeze_threshold": 10,
+      "description": "10-second intervals for testing"
+    },
+    "production_mode": {
+      "check_interval": 180,
+      "freeze_threshold": 180,
+      "description": "3-minute intervals for production"
+    },
+    "current_mode": "test_mode",
+    "recovery_methods": [
+      "ctrl_enter",
+      "type_continue",
+      "command_palette"
+    ],
+    "max_recovery_attempts": 3,
+    "recovery_cooldown": 30,
+    "window_detection": {
+      "method": "wmctrl",
+      "window_titles": [
+        "Visual Studio Code",
+        "VSCode",
+        "vscode"
+      ]
+    },
+    "state_comparison": {
+      "method": "screenshot_hash",
+      "hash_algorithm": "sha256",
+      "include_geometry": true
+    },
+    "logging": {
+      "enabled": true,
+      "log_file": "logs/freeze_detection.log",
+      "log_level": "INFO"
     }
   }
 }

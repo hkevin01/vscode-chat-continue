@@ -124,6 +124,8 @@ Examples:
 
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
+    parser.add_argument("--test-freeze", action="store_true", help="Run 10-second freeze detection test mode")
+
     parser.add_argument("--gui", action="store_true", help="Launch GUI interface (requires PyQt6)")
 
     parser.add_argument("--version", "-v", action="version", version="%(prog)s 1.0.0")
@@ -201,6 +203,106 @@ def launch_gui(args) -> int:
         return 1
 
 
+async def run_freeze_detection_test() -> int:
+    """Run the 10-second freeze detection test mode."""
+    print("🔍 Starting 10-Second Freeze Detection Test Mode")
+    print("=" * 50)
+    print("This test simulates VS Code window monitoring without X11 dependencies")
+    print("Interval: 10 seconds (vs 3 minutes in production)")
+    print("=" * 50)
+
+    import hashlib
+    import time
+    from typing import Dict
+
+    # Simple simulation without X11 dependencies
+    class MockWindowState:
+        def __init__(self, window_id: str):
+            self.window_id = window_id
+            self.last_hash = ""
+            self.unchanged_duration = 0
+            self.last_change_time = time.time()
+
+    # Mock VS Code windows
+    windows = {
+        "vscode_1": MockWindowState("vscode_1"),
+        "vscode_2": MockWindowState("vscode_2"),
+    }
+
+    freeze_threshold = 10  # 10 seconds for testing
+    check_interval = 10    # 10 seconds between checks
+
+    stats = {
+        "checks": 0,
+        "freezes_detected": 0,
+        "continue_actions": 0,
+    }
+
+    print(f"\n🚀 Starting monitoring (Ctrl+C to stop)...")
+
+    try:
+        for cycle in range(1, 10):  # Run for 9 cycles (90 seconds)
+            print(f"\n📊 Cycle #{cycle} - {time.strftime('%H:%M:%S')}")
+            stats["checks"] += 1
+
+            for window_id, window in windows.items():
+                # Simulate window content (changes for window_2, static for window_1)
+                current_time = int(time.time())
+                if window_id == "vscode_1":
+                    # This window will appear "frozen" after 15 seconds
+                    content = f"static_content_{current_time // 15}"
+                else:
+                    # This window changes every 8 seconds
+                    content = f"changing_content_{current_time // 8}"
+
+                current_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+
+                print(f"  {window_id}: hash={current_hash}", end="")
+
+                if current_hash == window.last_hash:
+                    window.unchanged_duration += check_interval
+                    print(f" (unchanged for {window.unchanged_duration}s)", end="")
+
+                    if window.unchanged_duration >= freeze_threshold:
+                        print(" 🚨 FREEZE DETECTED!")
+                        stats["freezes_detected"] += 1
+
+                        # Simulate continue action
+                        print(f"    🔧 Triggering continue action for {window_id}")
+                        print(f"    → Focus window and send Ctrl+Enter")
+                        print(f"    → Type 'continue' + Enter")
+                        stats["continue_actions"] += 1
+
+                        # Reset after recovery
+                        window.unchanged_duration = 0
+                        window.last_change_time = time.time()
+                    else:
+                        print()
+                else:
+                    if window.unchanged_duration > 0:
+                        print(" ✅ Content changed - reset freeze timer")
+                    else:
+                        print(" ✅ Active")
+                    window.unchanged_duration = 0
+                    window.last_change_time = time.time()
+
+                window.last_hash = current_hash
+
+            print(f"⏱️  Waiting {check_interval} seconds...")
+            time.sleep(check_interval)
+
+    except KeyboardInterrupt:
+        print("\n⚠️  Test interrupted by user")
+
+    print(f"\n📈 Test Results:")
+    print(f"  • Monitoring cycles: {stats['checks']}")
+    print(f"  • Freeze events detected: {stats['freezes_detected']}")
+    print(f"  • Continue actions triggered: {stats['continue_actions']}")
+    print(f"\n✅ Freeze detection test completed!")
+
+    return 0
+
+
 async def main() -> int:
     """Main entry point."""
     parser = create_parser()
@@ -220,6 +322,10 @@ async def main() -> int:
 
         if args.debug:
             app.config_manager.set("logging.level", "DEBUG")
+
+        # Run freeze detection test if requested
+        if args.test_freeze:
+            return await run_freeze_detection_test()
 
         await app.start()
         return 0
