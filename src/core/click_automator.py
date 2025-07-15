@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 
 try:
     import pyautogui
+
     HAS_PYAUTOGUI = True
 except ImportError:
     HAS_PYAUTOGUI = False
@@ -19,6 +20,7 @@ try:
     from pynput.mouse import Button
     from pynput.mouse import Controller as MouseController
     from pynput.mouse import Listener as MouseListener
+
     HAS_PYNPUT = True
 except ImportError:
     HAS_PYNPUT = False
@@ -32,6 +34,7 @@ if platform.system() == "Linux":
         import Xlib.display
         import Xlib.ext.xtest
         import Xlib.X
+
         HAS_XLIB = True
     except ImportError:
         HAS_XLIB = False
@@ -39,6 +42,7 @@ elif platform.system() == "Windows":
     try:
         import win32api
         import win32con
+
         HAS_WIN32 = True
     except ImportError:
         HAS_WIN32 = False
@@ -47,6 +51,7 @@ elif platform.system() == "Windows":
 @dataclass
 class ClickResult:
     """Result of a click operation."""
+
     success: bool
     x: int
     y: int
@@ -56,10 +61,10 @@ class ClickResult:
 
 class ClickAutomator:
     """Handles mouse automation and clicking."""
-    
+
     def __init__(self, click_delay: float = 0.1, move_duration: float = 0.2):
         """Initialize the click automator.
-        
+
         Args:
             click_delay: Delay between mouse down and up (seconds)
             move_duration: Duration for mouse movement animations (seconds)
@@ -68,17 +73,17 @@ class ClickAutomator:
         self.click_delay = click_delay
         self.move_duration = move_duration
         self.platform = platform.system()
-        
+
         # Store original mouse position for restoration
         self.original_position: Optional[Tuple[int, int]] = None
-        
+
         self._check_dependencies()
         self._init_controllers()
-    
+
     def _check_dependencies(self) -> None:
         """Check which click methods are available."""
         methods = []
-        
+
         if HAS_PYAUTOGUI:
             methods.append("pyautogui")
         if HAS_PYNPUT:
@@ -87,17 +92,17 @@ class ClickAutomator:
             methods.append("xlib")
         if HAS_WIN32 and self.platform == "Windows":
             methods.append("win32")
-        
+
         if not methods:
             self.logger.warning("No click automation methods available!")
         else:
             self.logger.debug(f"Available click methods: {', '.join(methods)}")
-    
+
     def _init_controllers(self) -> None:
         """Initialize mouse and keyboard controllers."""
         self.mouse_controller = None
         self.keyboard_controller = None
-        
+
         if HAS_PYNPUT:
             try:
                 self.mouse_controller = MouseController()
@@ -105,7 +110,7 @@ class ClickAutomator:
                 self.logger.debug("Initialized pynput controllers")
             except Exception as e:
                 self.logger.debug(f"Failed to initialize pynput controller: {e}")
-        
+
         # Configure pyautogui if available
         if HAS_PYAUTOGUI:
             try:
@@ -114,21 +119,22 @@ class ClickAutomator:
                 # Set reasonable pause between actions
                 pyautogui.PAUSE = 0.1
                 # Disable any potential beeps or sounds
-                if hasattr(pyautogui, '_beep'):
+                if hasattr(pyautogui, "_beep"):
                     pyautogui._beep = lambda: None
                 # Suppress error dialogs and sounds
-                if hasattr(pyautogui, '_display'):
+                if hasattr(pyautogui, "_display"):
                     try:
                         import os
-                        os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+
+                        os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
                     except Exception:
                         pass
             except Exception as e:
                 self.logger.debug(f"Failed to configure pyautogui: {e}")
-    
+
     def get_mouse_position(self) -> Tuple[int, int]:
         """Get the current mouse position.
-        
+
         Returns:
             Tuple of (x, y) coordinates
         """
@@ -143,64 +149,53 @@ class ClickAutomator:
         except Exception as e:
             self.logger.debug(f"Error getting mouse position: {e}")
             return (0, 0)
-    
-    def click(self, x: int, y: int, button: str = "left", 
-              restore_position: bool = True) -> ClickResult:
+
+    def click(
+        self, x: int, y: int, button: str = "left", restore_position: bool = True
+    ) -> ClickResult:
         """Click at the specified coordinates.
-        
+
         Args:
             x: X coordinate
             y: Y coordinate
             button: Mouse button to click ("left", "right", "middle")
             restore_position: Whether to restore mouse position after click
-            
+
         Returns:
             ClickResult object with success status and details
         """
         # Store original position if requested
         if restore_position and self.original_position is None:
             self.original_position = self.get_mouse_position()
-        
+
         try:
             # Try different click methods in order of preference
             methods = self._get_preferred_click_methods()
-            
+
             for method in methods:
                 result = self._click_with_method(x, y, button, method)
                 if result.success:
                     self.logger.debug(f"Successfully clicked ({x}, {y}) using {method}")
-                    
+
                     # Restore mouse position if requested
                     if restore_position and self.original_position:
                         self._restore_mouse_position()
-                    
+
                     return result
-            
+
             # If all methods failed
             error_msg = "All click methods failed"
             self.logger.error(error_msg)
-            return ClickResult(
-                success=False,
-                x=x,
-                y=y,
-                method="none",
-                error=error_msg
-            )
-            
+            return ClickResult(success=False, x=x, y=y, method="none", error=error_msg)
+
         except Exception as e:
             error_msg = f"Click operation failed: {e}"
             self.logger.error(error_msg)
-            return ClickResult(
-                success=False,
-                x=x,
-                y=y,
-                method="error",
-                error=error_msg
-            )
-    
+            return ClickResult(success=False, x=x, y=y, method="error", error=error_msg)
+
     def _get_preferred_click_methods(self) -> list:
         """Get click methods in order of preference for current platform.
-        
+
         Returns:
             List of method names
         """
@@ -212,17 +207,16 @@ class ClickAutomator:
             return ["pyautogui", "pynput"]
         else:
             return ["pyautogui", "pynput"]
-    
-    def _click_with_method(self, x: int, y: int, button: str, 
-                          method: str) -> ClickResult:
+
+    def _click_with_method(self, x: int, y: int, button: str, method: str) -> ClickResult:
         """Perform click using specific method.
-        
+
         Args:
             x: X coordinate
             y: Y coordinate
             button: Mouse button
             method: Click method to use
-            
+
         Returns:
             ClickResult object
         """
@@ -237,96 +231,86 @@ class ClickAutomator:
                 return self._click_win32(x, y, button)
             else:
                 return ClickResult(
-                    success=False,
-                    x=x,
-                    y=y,
-                    method=method,
-                    error=f"Method {method} not available"
+                    success=False, x=x, y=y, method=method, error=f"Method {method} not available"
                 )
-                
+
         except Exception as e:
-            return ClickResult(
-                success=False,
-                x=x,
-                y=y,
-                method=method,
-                error=str(e)
-            )
-    
+            return ClickResult(success=False, x=x, y=y, method=method, error=str(e))
+
     def _click_pyautogui(self, x: int, y: int, button: str) -> ClickResult:
         """Click using pyautogui."""
         pyautogui.click(x, y, button=button, duration=self.move_duration)
         return ClickResult(success=True, x=x, y=y, method="pyautogui")
-    
+
     def _click_pynput(self, x: int, y: int, button: str) -> ClickResult:
         """Click using pynput."""
         if not self.mouse_controller:
             raise Exception("Mouse controller not initialized")
-        
+
         # Map button names
         button_map = {
             "left": Button.left,
             "right": Button.right,
             "middle": Button.middle,
         }
-        
+
         if button not in button_map:
             raise Exception(f"Unknown button: {button}")
-        
+
         pynput_button = button_map[button]
-        
+
         # Move to position
         self.mouse_controller.position = (x, y)
         time.sleep(self.move_duration)
-        
+
         # Perform click
         self.mouse_controller.press(pynput_button)
         time.sleep(self.click_delay)
         self.mouse_controller.release(pynput_button)
-        
+
         return ClickResult(success=True, x=x, y=y, method="pynput")
-    
+
     def _click_xlib(self, x: int, y: int, button: str) -> ClickResult:
         """Click using X11 on Linux."""
         try:
             display = Xlib.display.Display()
-            
+
             # Map button names to X11 button numbers
             button_map = {
                 "left": 1,
                 "right": 3,
                 "middle": 2,
             }
-            
+
             if button not in button_map:
                 raise Exception(f"Unknown button: {button}")
-            
+
             x11_button = button_map[button]
-            
+
             # Move mouse
             display.warp_pointer(x, y)
             display.sync()
             time.sleep(self.move_duration)
-            
+
             # Click
             Xlib.ext.xtest.fake_input(display, Xlib.X.ButtonPress, x11_button)
             display.sync()
             time.sleep(self.click_delay)
-            
+
             Xlib.ext.xtest.fake_input(display, Xlib.X.ButtonRelease, x11_button)
             display.sync()
-            
+
             return ClickResult(success=True, x=x, y=y, method="xlib")
-            
+
         except Exception as e:
             raise Exception(f"X11 click failed: {e}")
-    
+
     def _click_win32(self, x: int, y: int, button: str) -> ClickResult:
         """Click using Win32 API on Windows."""
         # Move mouse
         win32api.SetCursorPos((x, y))
         time.sleep(self.move_duration)
-        
+
         # Map buttons to Win32 constants
         if button == "left":
             down_event = win32con.MOUSEEVENTF_LEFTDOWN
@@ -339,40 +323,43 @@ class ClickAutomator:
             up_event = win32con.MOUSEEVENTF_MIDDLEUP
         else:
             raise Exception(f"Unknown button: {button}")
-        
+
         # Perform click
         win32api.mouse_event(down_event, x, y, 0, 0)
         time.sleep(self.click_delay)
         win32api.mouse_event(up_event, x, y, 0, 0)
-        
+
         return ClickResult(success=True, x=x, y=y, method="win32")
-    
+
     def _restore_mouse_position(self) -> None:
         """Restore mouse to original position."""
         if self.original_position:
             try:
                 if HAS_PYAUTOGUI:
-                    pyautogui.moveTo(self.original_position[0], 
-                                   self.original_position[1], 
-                                   duration=self.move_duration)
+                    pyautogui.moveTo(
+                        self.original_position[0],
+                        self.original_position[1],
+                        duration=self.move_duration,
+                    )
                 elif self.mouse_controller:
                     self.mouse_controller.position = self.original_position
-                    
+
                 self.original_position = None
-                
+
             except Exception as e:
                 self.logger.debug(f"Failed to restore mouse position: {e}")
-    
-    def double_click(self, x: int, y: int, button: str = "left", 
-                    restore_position: bool = True) -> ClickResult:
+
+    def double_click(
+        self, x: int, y: int, button: str = "left", restore_position: bool = True
+    ) -> ClickResult:
         """Perform a double click.
-        
+
         Args:
             x: X coordinate
             y: Y coordinate
             button: Mouse button to click
             restore_position: Whether to restore mouse position after click
-            
+
         Returns:
             ClickResult object
         """
@@ -380,13 +367,12 @@ class ClickAutomator:
             if HAS_PYAUTOGUI:
                 if restore_position:
                     self.original_position = self.get_mouse_position()
-                
-                pyautogui.doubleClick(x, y, button=button, 
-                                    duration=self.move_duration)
-                
+
+                pyautogui.doubleClick(x, y, button=button, duration=self.move_duration)
+
                 if restore_position and self.original_position:
                     self._restore_mouse_position()
-                
+
                 return ClickResult(success=True, x=x, y=y, method="pyautogui_double")
             else:
                 # Fallback: two single clicks
@@ -395,30 +381,29 @@ class ClickAutomator:
                     time.sleep(0.1)
                     result2 = self.click(x, y, button, restore_position)
                     if result2.success:
-                        return ClickResult(success=True, x=x, y=y, 
-                                         method="double_single")
-                
-                return ClickResult(success=False, x=x, y=y, method="double_fallback",
-                                 error="Double click failed")
-                
+                        return ClickResult(success=True, x=x, y=y, method="double_single")
+
+                return ClickResult(
+                    success=False, x=x, y=y, method="double_fallback", error="Double click failed"
+                )
+
         except Exception as e:
-            return ClickResult(success=False, x=x, y=y, method="double_error",
-                             error=str(e))
-    
+            return ClickResult(success=False, x=x, y=y, method="double_error", error=str(e))
+
     def type_text(self, text: str, delay: float = 0.05) -> bool:
         """Type text using keyboard controller.
-        
+
         Args:
             text: Text to type
             delay: Delay between keystrokes
-            
+
         Returns:
             True if successful, False otherwise
         """
         if not self.keyboard_controller:
             self.logger.warning("Keyboard controller not available")
             return False
-            
+
         try:
             self.logger.debug(f"Typing text: '{text}'")
             for char in text:
@@ -429,20 +414,20 @@ class ClickAutomator:
         except Exception as e:
             self.logger.error(f"Failed to type text: {e}")
             return False
-    
+
     def press_key(self, key) -> bool:
         """Press a specific key.
-        
+
         Args:
             key: Key to press (from pynput.keyboard.Key)
-            
+
         Returns:
             True if successful, False otherwise
         """
         if not self.keyboard_controller:
             self.logger.warning("Keyboard controller not available")
             return False
-            
+
         try:
             self.keyboard_controller.press(key)
             self.keyboard_controller.release(key)
@@ -453,11 +438,11 @@ class ClickAutomator:
 
     def click_and_type_continue(self, chat_x: int, chat_y: int) -> bool:
         """Click on chat field and type 'continue' + Enter.
-        
+
         Args:
             chat_x: X coordinate of chat input field
             chat_y: Y coordinate of chat input field
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -467,31 +452,31 @@ class ClickAutomator:
             if not click_result.success:
                 self.logger.warning("Failed to click chat input field")
                 return False
-                
+
             # Wait a moment for focus
             time.sleep(0.2)
-            
+
             # Type "continue"
             if not self.type_text("continue", delay=0.03):
                 self.logger.warning("Failed to type 'continue'")
                 return False
-                
+
             # Press Enter
             time.sleep(0.1)
             if not self.press_key(Key.enter):
                 self.logger.warning("Failed to press Enter")
                 return False
-                
+
             self.logger.info("Successfully typed 'continue' in chat field")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Failed to click and type continue: {e}")
             return False
-    
+
     def is_available(self) -> bool:
         """Check if click automation is available.
-        
+
         Returns:
             True if at least one click method is available
         """

@@ -15,9 +15,12 @@ from core.button_finder import ButtonFinder
 
 # Temporarily disable chat panel filtering
 original_filter = ButtonFinder._filter_chat_panel_buttons
+
+
 def no_filter(self, buttons, width, height):
     print(f"⚠️  Filter bypassed - using all {len(buttons)} detected buttons")
     return buttons
+
 
 ButtonFinder._filter_chat_panel_buttons = no_filter
 

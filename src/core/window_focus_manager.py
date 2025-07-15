@@ -79,9 +79,7 @@ class WindowFocusManager:
 
         self.logger.debug(f"Available focus methods: {', '.join(methods)}")
 
-    def focus_window(
-        self, window: VSCodeWindow, timeout: float = 2.0
-    ) -> FocusResult:
+    def focus_window(self, window: VSCodeWindow, timeout: float = 2.0) -> FocusResult:
         """Bring a window into focus.
 
         Args:
@@ -105,19 +103,14 @@ class WindowFocusManager:
 
                 if result.success:
                     self.logger.info(
-                        f"Successfully focused window "
-                        f"'{window.title}' using {method}"
+                        f"Successfully focused window " f"'{window.title}' using {method}"
                     )
                     return result
                 else:
-                    self.logger.debug(
-                        f"Focus method {method} failed: " f"{result.error}"
-                    )
+                    self.logger.debug(f"Focus method {method} failed: " f"{result.error}")
 
             except Exception as e:
-                self.logger.debug(
-                    f"Focus method {method} threw " f"exception: {e}"
-                )
+                self.logger.debug(f"Focus method {method} threw " f"exception: {e}")
                 continue
 
         return FocusResult(
@@ -136,9 +129,7 @@ class WindowFocusManager:
         else:
             return ["pyautogui"]
 
-    def _focus_with_method(
-        self, window: VSCodeWindow, method: str, timeout: float
-    ) -> FocusResult:
+    def _focus_with_method(self, window: VSCodeWindow, method: str, timeout: float) -> FocusResult:
         """Focus window using specific method."""
         if method == "xdotool":
             return self._focus_with_xdotool(window, timeout)
@@ -158,9 +149,7 @@ class WindowFocusManager:
                 error=f"Unknown focus method: {method}",
             )
 
-    def _focus_with_xdotool(
-        self, window: VSCodeWindow, timeout: float
-    ) -> FocusResult:
+    def _focus_with_xdotool(self, window: VSCodeWindow, timeout: float) -> FocusResult:
         """Focus window using xdotool command."""
         try:
             # Convert hex window ID to decimal for xdotool
@@ -177,9 +166,7 @@ class WindowFocusManager:
             if result.returncode == 0:
                 # Give window time to actually gain focus
                 time.sleep(0.2)
-                return FocusResult(
-                    success=True, method="xdotool", window_id=window.window_id
-                )
+                return FocusResult(success=True, method="xdotool", window_id=window.window_id)
             else:
                 return FocusResult(
                     success=False,
@@ -203,9 +190,7 @@ class WindowFocusManager:
                 error=f"xdotool error: {e}",
             )
 
-    def _focus_with_wmctrl(
-        self, window: VSCodeWindow, timeout: float
-    ) -> FocusResult:
+    def _focus_with_wmctrl(self, window: VSCodeWindow, timeout: float) -> FocusResult:
         """Focus window using wmctrl command."""
         try:
             # Use wmctrl to activate the window
@@ -218,9 +203,7 @@ class WindowFocusManager:
 
             if result.returncode == 0:
                 time.sleep(0.2)
-                return FocusResult(
-                    success=True, method="wmctrl", window_id=window.window_id
-                )
+                return FocusResult(success=True, method="wmctrl", window_id=window.window_id)
             else:
                 return FocusResult(
                     success=False,
@@ -244,9 +227,7 @@ class WindowFocusManager:
                 error=f"wmctrl error: {e}",
             )
 
-    def _focus_with_xlib(
-        self, window: VSCodeWindow, timeout: float
-    ) -> FocusResult:
+    def _focus_with_xlib(self, window: VSCodeWindow, timeout: float) -> FocusResult:
         """Focus window using Xlib."""
         if not HAS_XLIB:
             return FocusResult(
@@ -270,9 +251,7 @@ class WindowFocusManager:
             display.sync()
             time.sleep(0.2)
 
-            return FocusResult(
-                success=True, method="xlib", window_id=window.window_id
-            )
+            return FocusResult(success=True, method="xlib", window_id=window.window_id)
 
         except Exception as e:
             return FocusResult(
@@ -282,9 +261,7 @@ class WindowFocusManager:
                 error=f"Xlib error: {e}",
             )
 
-    def _focus_with_win32(
-        self, window: VSCodeWindow, timeout: float
-    ) -> FocusResult:
+    def _focus_with_win32(self, window: VSCodeWindow, timeout: float) -> FocusResult:
         """Focus window using Win32 API."""
         if not HAS_WIN32:
             return FocusResult(
@@ -303,9 +280,7 @@ class WindowFocusManager:
 
             time.sleep(0.2)
 
-            return FocusResult(
-                success=True, method="win32", window_id=window.window_id
-            )
+            return FocusResult(success=True, method="win32", window_id=window.window_id)
 
         except Exception as e:
             return FocusResult(
@@ -315,9 +290,7 @@ class WindowFocusManager:
                 error=f"Win32 error: {e}",
             )
 
-    def _focus_with_pyautogui(
-        self, window: VSCodeWindow, timeout: float
-    ) -> FocusResult:
+    def _focus_with_pyautogui(self, window: VSCodeWindow, timeout: float) -> FocusResult:
         """Focus window using pyautogui (click to focus)."""
         if not HAS_PYAUTOGUI:
             return FocusResult(
@@ -343,9 +316,7 @@ class WindowFocusManager:
             # Restore mouse position
             pyautogui.moveTo(original_pos[0], original_pos[1])
 
-            return FocusResult(
-                success=True, method="pyautogui", window_id=window.window_id
-            )
+            return FocusResult(success=True, method="pyautogui", window_id=window.window_id)
 
         except Exception as e:
             return FocusResult(
@@ -412,9 +383,7 @@ class WindowFocusManager:
             self.logger.debug(f"Error restoring focus: {e}")
             return False
 
-    def cycle_vscode_windows(
-        self, windows: list, max_attempts: int = 3
-    ) -> Optional[VSCodeWindow]:
+    def cycle_vscode_windows(self, windows: list, max_attempts: int = 3) -> Optional[VSCodeWindow]:
         """Cycle through VS Code windows to find one that can be focused.
 
         Args:
@@ -431,14 +400,10 @@ class WindowFocusManager:
                 result = self.focus_window(window, timeout=1.0)
 
                 if result.success:
-                    self.logger.info(
-                        f"Successfully focused window: {window.title}"
-                    )
+                    self.logger.info(f"Successfully focused window: {window.title}")
                     return window
                 else:
-                    self.logger.debug(
-                        f"Focus attempt {attempt + 1} failed for {window.title}"
-                    )
+                    self.logger.debug(f"Focus attempt {attempt + 1} failed for {window.title}")
                     time.sleep(0.5)  # Brief pause between attempts
 
         self.logger.warning("Failed to focus any VS Code windows")

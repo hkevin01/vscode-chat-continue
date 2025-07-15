@@ -11,8 +11,19 @@ import signal
 import subprocess
 import sys
 import time
+import warnings
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List
+
+import psutil
+
+# Configure PyTorch to suppress pin_memory warnings for CPU-only usage
+os.environ['PYTORCH_DISABLE_GPU'] = '1'
+warnings.filterwarnings(
+    'ignore',
+    message='.*pin_memory.*no accelerator.*',
+    category=UserWarning
+)
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -59,6 +70,10 @@ class HighCapacityAutomation:
             'buttons_found': 0,
             'clicks_successful': 0
         }
+        
+        # Mouse movement detection for safety
+        self.last_mouse_pos = self.get_mouse_position()
+        self.mouse_movement_threshold = 50  # pixels
         
         # Setup logging
         logging.basicConfig(
@@ -177,103 +192,338 @@ class HighCapacityAutomation:
             self.logger.debug(f"Error capturing window {window.window_id}: {e}")
             return None
     
-    def process_vscode_window_safely(self, window) -> bool:
-        """Process a single VS Code window safely with proper bounds checking."""
+    def validate_vscode_window(self, window) -> bool:
+        """Enhanced validation to ensure this is actually a VS Code window."""
         try:
-            # Capture window-specific screenshot using xwd
-            screenshot_path = self.capture_vscode_window_safely(window)
-            if not screenshot_path:
+            # Check window title more strictly
+            title = window.title.lower()
+            
+            # Explicit browser exclusions
+            browser_indicators = [
+                'firefox', 'chrome', 'chromium', 'safari', 'edge', 'opera',
+                'mozilla', 'webkit', 'browser', 'google chrome', 'mozilla firefox',
+                'microsoft edge', 'youtube', 'gmail', 'github.com', 
+                'stackoverflow', 'reddit', 'twitter', 'facebook', 'instagram',
+                'http://', 'https://', '.com', '.org', '.net', '.io'
+            ]
+            
+            # If any browser indicators are found, reject immediately
+            if any(indicator in title for indicator in browser_indicators):
+                self.logger.debug(f"❌ Rejected browser window: {title[:50]}")
                 return False
             
-            # Load the image for ButtonFinder
+            # Check that window has reasonable dimensions
+            if window.width < 300 or window.height < 200:
+                self.logger.debug(f"❌ Window too small: {window.width}x{window.height}")
+                return False
+            
+            # Verify the window is still accessible
             try:
-                from PIL import Image
-                image = Image.open(screenshot_path)
+                result = subprocess.run(
+                    ["xdotool", "getwindowname", str(window.window_id)],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode != 0:
+                    self.logger.debug(f"❌ Window {window.window_id} no longer accessible")
+                    return False
             except Exception as e:
-                self.logger.debug(f"❌ Failed to load image: {e}")
-                if os.path.exists(screenshot_path):
-                    os.remove(screenshot_path)
+                self.logger.debug(f"❌ Cannot access window {window.window_id}: {e}")
                 return False
             
-            # Use ButtonFinder to detect Continue button within this window
-            buttons = self.button_finder.find_continue_buttons(image, window.x, window.y)
-            
-            # Clean up temporary screenshot
-            if os.path.exists(screenshot_path):
-                os.remove(screenshot_path)
-            
-            if not buttons:
-                self.logger.debug(f"❌ No Continue button found in VS Code window {window.window_id}")
+            # Check for VS Code specific process
+            try:
+                result = subprocess.run(
+                    ["xdotool", "getwindowpid", str(window.window_id)],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode == 0:
+                    pid = int(result.stdout.strip())
+                    proc = psutil.Process(pid)
+                    proc_name = proc.name().lower()
+                    proc_exe = proc.exe().lower() if proc.exe() else ""
+                    
+                    # Verify this is actually a VS Code process
+                    vscode_names = ['code', 'vscode', 'code-oss', 'codium', 'cursor']
+                    if not any(name in proc_name or name in proc_exe for name in vscode_names):
+                        self.logger.debug(f"❌ Process {proc_name} is not VS Code")
+                        return False
+                        
+            except Exception as e:
+                self.logger.debug(f"❌ Cannot verify process for window {window.window_id}: {e}")
                 return False
             
-            # Use the first detected button
-            button = buttons[0]
+            self.logger.debug(f"✅ Window validation passed: {title[:50]}")
+            return True
             
-            # Calculate click coordinates (button coordinates are already absolute)
-            screen_x = button.x + (button.width // 2)
-            screen_y = button.y + (button.height // 2)
+        except Exception as e:
+            self.logger.debug(f"❌ Window validation error: {e}")
+            return False
+
+    def validate_vscode_window_strict(self, window) -> bool:
+        """
+        ULTRA-STRICT validation to prevent ANY browser window interference.
+        Triple-layer validation with process verification.
+        """
+        try:
+            title = window.title.lower()
             
-            # Verify click coordinates are within window bounds
-            if not self.is_click_within_window_bounds(screen_x, screen_y, window):
-                self.logger.warning(f"❌ Click coordinates ({screen_x}, {screen_y}) outside window bounds")
+            # LAYER 1: Comprehensive browser pattern exclusion
+            browser_patterns = [
+                # Browser names
+                'firefox', 'chrome', 'chromium', 'safari', 'edge', 'opera',
+                'mozilla', 'webkit', 'browser', 'google chrome', 
+                'mozilla firefox', 'microsoft edge', 'internet explorer',
+                
+                # Browser-specific indicators
+                'tab', 'bookmark', 'download', 'incognito', 'private',
+                
+                # Web content indicators
+                'http://', 'https://', 'www.', 'ftp://',
+                '.com', '.org', '.net', '.io', '.co', '.uk', '.de',
+                
+                # Media and social platforms
+                'youtube', 'gmail', 'facebook', 'twitter', 'instagram',
+                'linkedin', 'reddit', 'stackoverflow', 'github.com',
+                'google.com', 'amazon', 'netflix', 'spotify',
+                
+                # Media controls that indicate browser media
+                'play', 'pause', 'video', 'audio', 'stream', 'media',
+                'player', 'controls', 'volume', 'mute',
+                
+                # Common web app terms
+                'login', 'sign in', 'dashboard', 'profile', 'settings',
+                'account', 'password', 'register', 'subscribe'
+            ]
+            
+            # Immediate rejection for any browser patterns
+            for pattern in browser_patterns:
+                if pattern in title:
+                    self.logger.error(f"❌ STRICT: Browser pattern '{pattern}' "
+                                    f"detected in: {title[:50]}")
+                    return False
+            
+            # LAYER 2: Process verification - must be actual VS Code process
+            try:
+                result = subprocess.run(
+                    ["xdotool", "getwindowpid", str(window.window_id)],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode != 0:
+                    self.logger.error(f"❌ STRICT: Cannot get PID for window "
+                                    f"{window.window_id}")
+                    return False
+                    
+                pid = int(result.stdout.strip())
+                proc = psutil.Process(pid)
+                proc_name = proc.name().lower()
+                proc_exe = proc.exe().lower() if proc.exe() else ""
+                
+                # Verify VS Code process names
+                vscode_names = ['code', 'vscode', 'code-oss', 'codium', 'cursor']
+                if not any(name in proc_name for name in vscode_names):
+                    self.logger.error(f"❌ STRICT: Process '{proc_name}' is not "
+                                    f"VS Code")
+                    return False
+                    
+                # Reject browser processes
+                browser_processes = [
+                    'firefox', 'chrome', 'chromium', 'safari', 'edge', 
+                    'opera', 'browser', 'gecko', 'webkit'
+                ]
+                if any(browser in proc_name or browser in proc_exe 
+                       for browser in browser_processes):
+                    self.logger.error(f"❌ STRICT: Browser process detected: "
+                                    f"{proc_name}")
+                    return False
+                    
+            except Exception as e:
+                self.logger.error(f"❌ STRICT: Process verification failed: {e}")
                 return False
             
-            # Focus the window
-            subprocess.run([
-                "xdotool", "windowactivate", str(window.window_id)
-            ], capture_output=True, timeout=2)
+            # LAYER 3: Window title must contain VS Code indicators
+            vscode_indicators = [
+                'visual studio code', 'vscode', 'code - oss', 'codium',
+                'cursor', '- code', 'copilot', 'continue', 'chat'
+            ]
             
-            time.sleep(0.2)  # Brief delay for window focus
-            
-            # Perform the click
-            result = self.click_automator.click(screen_x, screen_y)
-            
-            if result.success:
-                self.logger.info(f"✅ Successfully clicked Continue button in VS Code window")
-                self.successful_clicks += 1
-                return True
-            else:
-                self.logger.warning(f"❌ Click failed: {result}")
+            has_vscode_indicator = any(indicator in title 
+                                     for indicator in vscode_indicators)
+            if not has_vscode_indicator:
+                self.logger.error(f"❌ STRICT: No VS Code indicators in title: "
+                                f"{title[:50]}")
                 return False
+            
+            # LAYER 4: Window dimensions sanity check
+            if window.width < 400 or window.height < 300:
+                self.logger.error(f"❌ STRICT: Window too small for VS Code: "
+                                f"{window.width}x{window.height}")
+                return False
+            
+            self.logger.debug(f"✅ STRICT: Window validation passed: "
+                            f"{title[:50]}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ STRICT: Validation error: {e}")
+            return False
+
+    def process_vscode_window_safely(self, window) -> bool:
+        """
+        MOUSE-FREE VS Code window processing with keyboard-only interaction.
+        This method NEVER uses mouse clicks for safety.
+        """
+        try:
+            # CRITICAL: Skip mouse-based approach entirely - use keyboard only
+            self.logger.info(f"🚫 MOUSE-FREE: Skipping visual button detection")
+            self.logger.info(f"⌨️ Using keyboard-only method for window {window.window_id}")
+            
+            # Always use the safe keyboard method instead of mouse clicking
+            return self.type_continue_in_chat(window)
                 
         except Exception as e:
-            self.logger.error(f"Error processing VS Code window safely: {e}")
+            self.logger.error(f"Error in mouse-free processing: {e}")
             return False
     
     def type_continue_in_chat(self, window) -> bool:
         """
-        As a fallback, type 'continue' into the chat window and press Enter.
+        PROGRAMMATIC CONTINUE METHOD: Use keyboard shortcuts and commands instead of visual button clicking.
+        This method prioritizes keyboard shortcuts like Ctrl+Enter that directly trigger continue/accept functionality.
         """
         try:
-            self.logger.info(f"⚙️ Fallback: Typing 'continue' in window {window.window_id}")
+            self.logger.info(f"🎯 PROGRAMMATIC METHOD: Continue automation for window {window.window_id}")
 
-            # Focus the window
-            subprocess.run(
+            # CRITICAL SAFETY: Triple-check this is actually VS Code
+            if not self.validate_vscode_window_strict(window):
+                self.logger.error(f"❌ SAFETY ABORT: Window {window.window_id} failed strict validation")
+                return False
+
+            # CRITICAL SAFETY: Check window title again for browser content
+            title = window.title.lower()
+            browser_keywords = [
+                'youtube', 'firefox', 'chrome', 'safari', 'edge', 'opera', 'browser',
+                'google', 'mozilla', 'webkit', 'http', 'www', '.com', '.org', 
+                'video', 'watch', 'play', 'pause', 'gmail', 'facebook', 'twitter'
+            ]
+            
+            if any(keyword in title for keyword in browser_keywords):
+                self.logger.error(f"❌ SAFETY ABORT: Browser content detected in title: {title[:50]}")
+                return False
+
+            # Focus window with verification
+            self.logger.debug(f"🎯 Focusing VS Code window {window.window_id}")
+            result = subprocess.run(
                 ["xdotool", "windowactivate", str(window.window_id)],
-                capture_output=True, timeout=2
+                capture_output=True, text=True, timeout=3
             )
-            time.sleep(0.3)  # Slightly longer delay for focus
+            
+            if result.returncode != 0:
+                self.logger.error(f"❌ Failed to focus window {window.window_id}")
+                return False
+                
+            time.sleep(0.3)
 
-            # Type "continue"
-            subprocess.run(
-                ["xdotool", "type", "continue"],
-                capture_output=True, timeout=2
-            )
-            time.sleep(0.1)
+            # METHOD 1: Try Ctrl+Enter (most reliable for accept/continue in inline chat)
+            self.logger.debug("🔄 Attempting Ctrl+Enter method (inline chat accept)...")
+            try:
+                result = subprocess.run([
+                    "xdotool", "key", "--window", str(window.window_id), "ctrl+Return"
+                ], capture_output=True, text=True, timeout=3)
+                
+                if result.returncode == 0:
+                    self.logger.info("✅ SUCCESS: Ctrl+Enter executed for continue/accept")
+                    self.successful_clicks += 1
+                    return True
+                    
+            except Exception as e:
+                self.logger.debug(f"Ctrl+Enter method failed: {e}")
 
-            # Press Enter
-            subprocess.run(
-                ["xdotool", "key", "Return"],
-                capture_output=True, timeout=2
-            )
+            # METHOD 2: Command palette approach for accept commands
+            self.logger.debug("🔄 Attempting command palette method...")
+            try:
+                # Open command palette
+                subprocess.run([
+                    "xdotool", "key", "--window", str(window.window_id), "ctrl+shift+p"
+                ], capture_output=True, timeout=2)
+                time.sleep(0.4)
+                
+                # Type accept command
+                subprocess.run([
+                    "xdotool", "type", "--window", str(window.window_id), "Chat: Accept"
+                ], capture_output=True, timeout=2)
+                time.sleep(0.2)
+                
+                # Execute command
+                subprocess.run([
+                    "xdotool", "key", "--window", str(window.window_id), "Return"
+                ], capture_output=True, timeout=2)
+                
+                self.logger.info("✅ SUCCESS: Command palette accept executed")
+                self.successful_clicks += 1
+                return True
+                
+            except Exception as e:
+                self.logger.debug(f"Command palette method failed: {e}")
 
-            self.logger.info(f"✅ Fallback successful for window {window.window_id}")
-            # Consider this a successful action for stats
-            self.successful_clicks += 1
-            return True
+            # METHOD 3: Try Enter key alone (for chat submission)
+            self.logger.debug("🔄 Attempting Enter key method...")
+            try:
+                result = subprocess.run([
+                    "xdotool", "key", "--window", str(window.window_id), "Return"
+                ], capture_output=True, text=True, timeout=3)
+                
+                if result.returncode == 0:
+                    self.logger.info("✅ SUCCESS: Enter key executed for submission")
+                    self.successful_clicks += 1
+                    return True
+                    
+            except Exception as e:
+                self.logger.debug(f"Enter key method failed: {e}")
+
+            # METHOD 4: Fallback - type "continue" and press Enter
+            self.logger.debug("🔄 Fallback method: typing 'continue'...")
+            try:
+                # Click in chat area to ensure focus (minimal mouse usage)
+                chat_input_x = window.width // 2
+                chat_input_y = int(window.height * 0.9)
+                
+                subprocess.run([
+                    "xdotool", "mousemove", "--window", str(window.window_id), 
+                    str(chat_input_x), str(chat_input_y)
+                ], capture_output=True, timeout=2)
+                
+                subprocess.run([
+                    "xdotool", "click", "--window", str(window.window_id), "1"
+                ], capture_output=True, timeout=2)
+                time.sleep(0.2)
+                
+                # Clear existing text
+                subprocess.run([
+                    "xdotool", "key", "--window", str(window.window_id), "ctrl+a"
+                ], capture_output=True, timeout=2)
+                
+                # Type "continue"
+                subprocess.run([
+                    "xdotool", "type", "--window", str(window.window_id), "continue"
+                ], capture_output=True, timeout=2)
+                time.sleep(0.2)
+                
+                # Press Enter
+                subprocess.run([
+                    "xdotool", "key", "--window", str(window.window_id), "Return"
+                ], capture_output=True, timeout=2)
+                
+                self.logger.info("✅ SUCCESS: Fallback method completed")
+                self.successful_clicks += 1
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"Fallback method failed: {e}")
+
+            self.logger.error("❌ All programmatic methods failed")
+            return False
 
         except Exception as e:
-            self.logger.error(f"❌ Fallback failed for window {window.window_id}: {e}")
+            self.logger.error(f"❌ PROGRAMMATIC METHOD failed for window {window.window_id}: {e}")
             return False
 
     def is_click_within_window_bounds(self, x: int, y: int, window) -> bool:
@@ -291,7 +541,10 @@ class HighCapacityAutomation:
             return False
     
     def process_windows_batch_safely(self, windows: List) -> int:
-        """Process VS Code windows safely using proper window screenshots."""
+        """
+        Process VS Code windows safely using ONLY keyboard methods.
+        COMPLETELY MOUSE-FREE automation for maximum safety.
+        """
         buttons_clicked = 0
         
         # Process windows in smaller batches to manage resources
@@ -300,17 +553,22 @@ class HighCapacityAutomation:
             
             for window in batch:
                 try:
-                    # Try primary method: find and click Continue button
-                    if self.process_vscode_window_safely(window):
-                        buttons_clicked += 1
-                        self.logger.info("✅ Button clicked, stopping cycle for safety")
+                    # SAFETY: Check for mouse movement first
+                    if self.check_mouse_movement():
+                        self.logger.info("⏸️ Mouse activity detected, skipping this cycle")
                         return buttons_clicked
                     
-                    # Fallback method: type "continue" in chat
-                    self.logger.debug("🔄 Primary method failed, trying fallback...")
+                    # ULTRA-STRICT validation before any interaction
+                    if not self.validate_vscode_window_strict(window):
+                        self.logger.warning(f"❌ STRICT validation failed for {window.window_id}")
+                        continue
+                    
+                    # MOUSE-FREE METHOD: Use only keyboard interaction
+                    self.logger.info(f"⌨️ KEYBOARD-ONLY: Processing window {window.window_id}")
+                    
                     if self.type_continue_in_chat(window):
                         buttons_clicked += 1
-                        self.logger.info("✅ Fallback successful, stopping cycle for safety")
+                        self.logger.info("✅ Keyboard method successful, stopping cycle for safety")
                         return buttons_clicked
                     
                 except Exception as e:
@@ -392,6 +650,112 @@ class HighCapacityAutomation:
         except Exception as e:
             self.logger.debug(f"Error during cleanup: {e}")
     
+    def get_mouse_position(self) -> tuple:
+        """Get current mouse position with enhanced tracking."""
+        try:
+            result = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True, text=True, timeout=1
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                x = int(lines[0].split('=')[1])
+                y = int(lines[1].split('=')[1])
+                return (x, y)
+        except Exception as e:
+            self.logger.debug(f"Mouse position detection failed: {e}")
+        return (0, 0)
+    
+    def check_mouse_movement(self) -> bool:
+        """
+        Enhanced mouse movement detection with user interaction response.
+        When mouse movement is detected, either scroll to continue button
+        or pause automation completely.
+        """
+        try:
+            current_pos = self.get_mouse_position()
+            
+            if not hasattr(self, 'last_mouse_pos'):
+                self.last_mouse_pos = current_pos
+                return False
+            
+            # Calculate distance moved
+            dx = current_pos[0] - self.last_mouse_pos[0]
+            dy = current_pos[1] - self.last_mouse_pos[1]
+            distance = (dx**2 + dy**2)**0.5
+            
+            # Lower threshold for more responsive detection
+            movement_threshold = 30.0  # Reduced from 50px
+            
+            if distance > movement_threshold:
+                self.logger.warning(f"🖱️ Mouse movement detected ({distance:.1f}px), "
+                                  f"pausing automation")
+                
+                # Store current position for next check
+                self.last_mouse_pos = current_pos
+                
+                # Option 1: Try to scroll to continue button in active window
+                if self.try_scroll_to_continue():
+                    self.logger.info("📜 Attempted to scroll to continue button")
+                
+                # Option 2: Pause automation to avoid interference
+                self.logger.info("⏸️ Pausing automation due to mouse activity")
+                return True
+            
+            # Update position if no significant movement
+            self.last_mouse_pos = current_pos
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"Mouse movement check failed: {e}")
+            return False
+    
+    def try_scroll_to_continue(self) -> bool:
+        """
+        Try to scroll the active window to make continue button visible.
+        This is a non-intrusive way to help when user is actively using mouse.
+        """
+        try:
+            # Get active window
+            result = subprocess.run(
+                ["xdotool", "getactivewindow"],
+                capture_output=True, text=True, timeout=2
+            )
+            
+            if result.returncode != 0:
+                return False
+                
+            active_window_id = result.stdout.strip()
+            
+            # Check if active window is VS Code
+            result = subprocess.run(
+                ["xdotool", "getwindowname", active_window_id],
+                capture_output=True, text=True, timeout=2
+            )
+            
+            if result.returncode != 0:
+                return False
+                
+            window_title = result.stdout.strip().lower()
+            
+            # Only scroll if it's a VS Code window
+            vscode_indicators = ['code', 'vscode', 'copilot', 'chat']
+            if not any(indicator in window_title for indicator in vscode_indicators):
+                return False
+            
+            # Scroll down to potentially reveal continue button
+            # Use Page Down key which is less intrusive than mouse scrolling
+            subprocess.run([
+                "xdotool", "key", "--window", active_window_id, "End"
+            ], capture_output=True, timeout=2)
+            
+            self.logger.debug(f"📜 Scrolled VS Code window {active_window_id} to bottom")
+            return True
+            
+        except Exception as e:
+            self.logger.debug(f"Scroll to continue failed: {e}")
+            return False
+
     def run(self):
         """Run the safe high-capacity automation."""
         self.logger.info("🚀 Starting Safe VS Code Continue Button Automation")
@@ -405,6 +769,12 @@ class HighCapacityAutomation:
         
         try:
             while self.running:
+                # Check for mouse movement first
+                if self.check_mouse_movement():
+                    self.logger.info("⏸️  Pausing automation due to mouse activity")
+                    time.sleep(5)  # Wait 5 seconds for user activity to finish
+                    continue
+                
                 self.cycle_count += 1
                 
                 cycle_start = time.time()

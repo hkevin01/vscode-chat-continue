@@ -97,5 +97,22 @@
     "image_compression_quality": 85,
     "parallel_processing": true,
     "max_concurrent_windows": 3
+  },
+  "monitoring": {
+    "enabled": true,
+    "freeze_threshold": 600.0,
+    "recovery_cooldown": 300.0,
+    "methods": {
+      "soft_recovery": {
+        "ctrl_enter": true,
+        "command_palette": true,
+        "enter_key": true,
+        "type_continue": true
+      },
+      "hard_recovery": {
+        "process_restart": false,
+        "emergency_only": true
+      }
+    }
   }
 }

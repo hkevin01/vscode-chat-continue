@@ -19,18 +19,18 @@ def test_screenshot_functionality():
     """Test basic screenshot functionality."""
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    
+
     logger.info(f"Testing screenshot functionality on {platform.system()}")
-    
+
     screen_capture = ScreenCapture()
-    
+
     # Test full screen capture
     logger.info("Testing full screen capture...")
     full_screen = screen_capture.capture_screen()
-    
+
     if full_screen:
         logger.info(f"✅ Full screen capture successful: {full_screen.size}")
-        
+
         # Save test screenshot
         test_path = "/tmp/test_fullscreen.png"
         if screen_capture.save_image(full_screen, test_path):
@@ -40,14 +40,14 @@ def test_screenshot_functionality():
     else:
         logger.error("❌ Full screen capture failed")
         return False
-    
+
     # Test region capture (small region in top-left)
     logger.info("Testing region capture...")
     region = screen_capture.capture_region(100, 100, 200, 200)
-    
+
     if region:
         logger.info(f"✅ Region capture successful: {region.size}")
-        
+
         # Save test region
         region_path = "/tmp/test_region.png"
         if screen_capture.save_image(region, region_path):
@@ -57,12 +57,12 @@ def test_screenshot_functionality():
     else:
         logger.error("❌ Region capture failed")
         return False
-    
+
     # Test screen size detection
     logger.info("Testing screen size detection...")
     screen_size = screen_capture.get_screen_size()
     logger.info(f"✅ Detected screen size: {screen_size}")
-    
+
     logger.info("🎉 All screenshot tests passed!")
     return True
 

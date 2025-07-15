@@ -30,28 +30,22 @@ def event_loop():
 @pytest.fixture
 def temp_config_file():
     """Create a temporary configuration file for testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         config_data = {
-            "automation": {
-                "detection_interval": 5,
-                "dry_run": True,
-                "max_clicks_per_window": 3
-            },
+            "automation": {"detection_interval": 5, "dry_run": True, "max_clicks_per_window": 3},
             "detection": {
                 "ocr_confidence": 80,
-                "fallback_strategies": ["coordinate", "text", "color"]
+                "fallback_strategies": ["coordinate", "text", "color"],
             },
-            "safety": {
-                "pause_on_user_activity": True,
-                "emergency_stop_key": "F12"
-            }
+            "safety": {"pause_on_user_activity": True, "emergency_stop_key": "F12"},
         }
         import json
+
         json.dump(config_data, f, indent=2)
         temp_path = f.name
-    
+
     yield Path(temp_path)
-    
+
     # Cleanup
     Path(temp_path).unlink(missing_ok=True)
 
@@ -69,9 +63,9 @@ def mock_vscode_window():
         window_id=12345,
         title="test_file.py - vscode-chat-continue - Visual Studio Code",
         x=100,
-        y=100, 
+        y=100,
         width=1920,
-        height=1080
+        height=1080,
     )
 
 
@@ -79,13 +73,7 @@ def mock_vscode_window():
 def mock_button_location():
     """Create a mock button location for testing."""
     return ButtonLocation(
-        x=1800,
-        y=900,
-        width=120,
-        height=32,
-        confidence=0.95,
-        method="test_method",
-        text="Continue"
+        x=1800, y=900, width=120, height=32, confidence=0.95, method="test_method", text="Continue"
     )
 
 
@@ -93,14 +81,16 @@ def mock_button_location():
 def mock_image():
     """Create a mock PIL Image for testing."""
     from PIL import Image
-    return Image.new('RGB', (100, 100), color='black')
+
+    return Image.new("RGB", (100, 100), color="black")
 
 
 @pytest.fixture
 def mock_screenshot():
     """Create a mock screenshot for testing."""
     from PIL import Image
-    return Image.new('RGB', (1920, 1080), color='white')
+
+    return Image.new("RGB", (1920, 1080), color="white")
 
 
 @pytest.fixture
@@ -109,18 +99,18 @@ def mock_automation_engine():
     mock_engine = Mock()
     mock_engine.running = False
     mock_engine.stats = {
-        'windows_processed': 0,
-        'buttons_found': 0,
-        'clicks_attempted': 0,
-        'clicks_successful': 0,
-        'errors': 0,
-        'start_time': 0
+        "windows_processed": 0,
+        "buttons_found": 0,
+        "clicks_attempted": 0,
+        "clicks_successful": 0,
+        "errors": 0,
+        "start_time": 0,
     }
     mock_engine.get_statistics.return_value = mock_engine.stats
     mock_engine.get_performance_report.return_value = {
-        'statistics': mock_engine.stats,
-        'success_rate': 0.0,
-        'runtime_seconds': 0
+        "statistics": mock_engine.stats,
+        "success_rate": 0.0,
+        "runtime_seconds": 0,
     }
     return mock_engine
 
@@ -131,10 +121,10 @@ def suppress_gui_in_tests(monkeypatch):
     # Mock PyQt6 components that might cause issues in headless testing
     mock_app = Mock()
     mock_widget = Mock()
-    
+
     # This prevents actual GUI creation during tests
-    monkeypatch.setattr('PyQt6.QtWidgets.QApplication', lambda *args: mock_app)
-    monkeypatch.setattr('PyQt6.QtWidgets.QMainWindow', lambda *args: mock_widget)
+    monkeypatch.setattr("PyQt6.QtWidgets.QApplication", lambda *args: mock_app)
+    monkeypatch.setattr("PyQt6.QtWidgets.QMainWindow", lambda *args: mock_widget)
 
 
 @pytest.fixture
@@ -143,32 +133,22 @@ def disable_audio():
     import os
 
     # Set environment variables to disable audio
-    os.environ['PULSE_DISABLE'] = '1'
-    os.environ['ALSA_DISABLE'] = '1'
+    os.environ["PULSE_DISABLE"] = "1"
+    os.environ["ALSA_DISABLE"] = "1"
     yield
     # Cleanup
-    os.environ.pop('PULSE_DISABLE', None)
-    os.environ.pop('ALSA_DISABLE', None)
+    os.environ.pop("PULSE_DISABLE", None)
+    os.environ.pop("ALSA_DISABLE", None)
 
 
 # Pytest configuration
 def pytest_configure(config):
     """Configure pytest with custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: marks tests as unit tests"
-    )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "performance: marks tests as performance tests"
-    )
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow running"
-    )
-    config.addinivalue_line(
-        "markers", "gui: marks tests as requiring GUI"
-    )
+    config.addinivalue_line("markers", "unit: marks tests as unit tests")
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "performance: marks tests as performance tests")
+    config.addinivalue_line("markers", "slow: marks tests as slow running")
+    config.addinivalue_line("markers", "gui: marks tests as requiring GUI")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -181,11 +161,11 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
         elif "performance" in str(item.fspath):
             item.add_marker(pytest.mark.performance)
-        
+
         # Mark GUI tests
         if "gui" in str(item.fspath) or "main_window" in str(item.fspath):
             item.add_marker(pytest.mark.gui)
-        
+
         # Mark slow tests
-        if any(keyword in item.name.lower() for keyword in ['slow', 'benchmark', 'performance']):
+        if any(keyword in item.name.lower() for keyword in ["slow", "benchmark", "performance"]):
             item.add_marker(pytest.mark.slow)
