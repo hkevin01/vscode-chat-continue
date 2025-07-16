@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import signal
+import subprocess
 import sys
 import warnings
 from pathlib import Path
@@ -21,17 +22,175 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Check for psutil availability
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 from src.utils.gnome_screenshot_fix import setup_screenshot_environment
 
 setup_screenshot_environment()
 
 # Configure PyTorch to suppress pin_memory warnings for CPU-only usage
 os.environ["PYTORCH_DISABLE_GPU"] = "1"
-warnings.filterwarnings("ignore", message=".*pin_memory.*no accelerator.*", category=UserWarning)
+warnings.filterwarnings(
+    "ignore",
+    message=".*pin_memory.*no accelerator.*",
+    category=UserWarning
+)
 
 from src.core.automation_engine import AutomationEngine
 from src.core.config_manager import ConfigManager
 from src.utils.logger import setup_logging
+
+
+def terminate_existing_processes(verbose: bool = False) -> int:
+    """Terminate any existing vscode-chat-continue processes.
+    
+    Args:
+        verbose: Enable verbose output
+        
+    Returns:
+        Number of processes terminated
+    """
+    current_pid = os.getpid()
+    terminated_count = 0
+    
+    # Process patterns to search for
+    automation_patterns = [
+        'vscode-chat-continue',
+        'src/main.py',
+        'main.py',
+        'automation_engine.py',
+        'continuous_automation.py',
+        'lightweight_automation.py',
+        'safe_automation.py',
+        'main_window.py'
+    ]
+    
+    if verbose:
+        print("🔍 Searching for existing vscode-chat-continue processes...")
+    
+    processes_to_terminate = []
+    
+    if HAS_PSUTIL:
+        # Use psutil for better process detection
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                proc_info = proc.info
+                pid = proc_info['pid']
+                name = proc_info['name'] or ''
+                cmdline = proc_info['cmdline'] or []
+                
+                # Skip our own process
+                if pid == current_pid:
+                    continue
+                
+                # Check if this is an automation process
+                cmdline_str = ' '.join(str(arg) for arg in cmdline if arg)
+                
+                for pattern in automation_patterns:
+                    if pattern in cmdline_str or pattern in name:
+                        # Additional check to ensure it's actually our project
+                        if ('vscode-chat-continue' in cmdline_str or
+                                'src/main.py' in cmdline_str):
+                            processes_to_terminate.append(
+                                (pid, name, cmdline_str)
+                            )
+                            break
+                        
+            except (psutil.NoSuchProcess, psutil.AccessDenied,
+                    psutil.ZombieProcess):
+                continue
+    else:
+        # Fallback to ps command
+        try:
+            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+            
+            for line in result.stdout.split('\n')[1:]:  # Skip header
+                if not line.strip():
+                    continue
+                
+                parts = line.split(None, 10)
+                if len(parts) >= 11:
+                    try:
+                        pid = int(parts[1])
+                        command = parts[10]
+                        
+                        # Skip our own process
+                        if pid == current_pid:
+                            continue
+                        
+                        for pattern in automation_patterns:
+                            if pattern in command and 'vscode-chat-continue' in command:
+                                processes_to_terminate.append((pid, parts[10], command))
+                                break
+                                
+                    except ValueError:
+                        continue
+                        
+        except subprocess.SubprocessError:
+            if verbose:
+                print("❌ Failed to get process list")
+    
+    # Terminate found processes
+    for pid, name, cmdline in processes_to_terminate:
+        try:
+            if verbose:
+                print(f"🛑 Terminating process {pid}: {name}")
+                print(f"   Command: {cmdline[:80]}...")
+            
+            if HAS_PSUTIL:
+                proc = psutil.Process(pid)
+                proc.terminate()
+                # Wait for graceful termination
+                try:
+                    proc.wait(timeout=3)
+                except psutil.TimeoutExpired:
+                    # Force kill if graceful termination failed
+                    proc.kill()
+                    if verbose:
+                        print(f"   ⚡ Force killed process {pid}")
+            else:
+                # Use kill command
+                os.kill(pid, signal.SIGTERM)
+                import time
+                time.sleep(1)  # Give process time to terminate
+                
+                # Check if still running and force kill if needed
+                try:
+                    os.kill(pid, 0)  # Check if process exists
+                    os.kill(pid, signal.SIGKILL)  # Force kill
+                    if verbose:
+                        print(f"   ⚡ Force killed process {pid}")
+                except ProcessLookupError:
+                    pass  # Process already terminated
+            
+            terminated_count += 1
+            if verbose:
+                print(f"   ✅ Successfully terminated process {pid}")
+                
+        except (psutil.NoSuchProcess, ProcessLookupError):
+            # Process already terminated
+            pass
+        except (psutil.AccessDenied, PermissionError):
+            if verbose:
+                print(f"   ❌ Permission denied for process {pid}")
+        except Exception as e:
+            if verbose:
+                print(f"   ❌ Error terminating process {pid}: {e}")
+    
+    if terminated_count > 0:
+        print(f"🛑 Terminated {terminated_count} existing vscode-chat-continue process(es)")
+        # Give processes time to fully terminate
+        import time
+        time.sleep(1)
+    elif verbose:
+        print("✅ No existing vscode-chat-continue processes found")
+    
+    return terminated_count
 
 
 class VSCodeContinueAutomation:
@@ -127,6 +286,8 @@ Examples:
     parser.add_argument("--test-freeze", action="store_true", help="Run 10-second freeze detection test mode")
 
     parser.add_argument("--gui", action="store_true", help="Launch GUI interface (requires PyQt6)")
+    
+    parser.add_argument("--no-terminate", action="store_true", help="Skip termination of existing processes")
 
     parser.add_argument("--version", "-v", action="version", version="%(prog)s 1.0.0")
 
@@ -313,6 +474,10 @@ async def main() -> int:
         return launch_gui(args)
 
     try:
+        # Terminate existing processes if not skipped
+        if not args.no_terminate:
+            terminate_existing_processes(verbose=True)
+
         # Create and start CLI application
         app = VSCodeContinueAutomation(args.config)
 
